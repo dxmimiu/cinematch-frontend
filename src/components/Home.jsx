@@ -5,70 +5,130 @@ import axios from 'axios';
 export default function Home({ setStep, currentUser, userPreferences }) {
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingTVs, setTrendingTVs] = useState([]);
-  const [recommended, setRecommended] = useState([]);
+
+  const [recommended, setRecommended] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [detailedMovie, setDetailedMovie] = useState(null);
 
-  const recScrollRef = useRef(null);
   const movieScrollRef = useRef(null);
   const tvScrollRef = useRef(null);
+  const recSmallScrollRef = useRef(null); 
 
   useEffect(() => {
-    const fetchHomeData = async () => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const token = localStorage.getItem('cinematch_token');
+      
+      const storedPrefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{}');
+      const genreWeights = storedPrefs.genreWeights || {};
+      const API_KEY = "181edc5801db6678de6ccb2864149a6a";
+
       try {
-        const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-        const [moviesRes, tvsRes, recRes] = await Promise.all([
-          fetch(`https://api.themoviedb.org/3/trending/movie/week?api_key=${API_KEY}&language=th-TH`),
-          fetch(`https://api.themoviedb.org/3/trending/tv/week?api_key=${API_KEY}&language=th-TH`),
-          fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=vote_average.desc&vote_count.gte=1000&page=1`)
-        ]);
+        // ✅ 1. ยิง API ขอข้อมูลแนะนำจาก Backend ของเรา
+        const recPromise = axios.post('http://172.20.10.2:5000/api/recommendations', 
+          { genreWeights: genreWeights },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
-        const moviesData = await moviesRes.json();
-        const tvsData = await tvsRes.json();
-        const recData = await recRes.json();
+        // ✅ 2. ยิง API ขอข้อมูลหนังฮิตจาก TMDB
+        const moviePromise = fetch(`https://api.themoviedb.org/3/trending/movie/week?api_key=${API_KEY}&language=th-TH`);
+        
+        // ✅ 3. ยิง API ขอข้อมูลซีรีส์ฮิตจาก TMDB
+        const tvPromise = fetch(`https://api.themoviedb.org/3/trending/tv/week?api_key=${API_KEY}&language=th-TH`);
 
-        setTrendingMovies(moviesData.results.filter(item => item.poster_path).slice(0, 10));
-        setTrendingTVs(tvsData.results.filter(item => item.poster_path).slice(0, 10));
-        setRecommended(recData.results.filter(item => item.poster_path).slice(0, 10));
+        // รอให้โหลดเสร็จพร้อมกันทั้ง 3 อย่าง
+        const [recRes, movieRes, tvRes] = await Promise.all([recPromise, moviePromise, tvPromise]);
+        
+const movieData = await movieRes.json();
+        const tvData = await tvRes.json();
+
+        // ✅ คำนวณเปอร์เซ็นต์แบบบัญญัติไตรยางค์ และเติมเลขอันดับ (rank)
+        const recData = recRes.data || [];
+        const topScore = recData[0]?.rawScore || 1; // ดึงคะแนนดิบอันดับ 1 มาเป็นฐาน
+        
+        const formattedRecs = recData.map((item, index) => {
+          let percent = 98; // ล็อกอันดับ 1 ให้เริ่มที่ 98% เสมอ
+          
+          if (index > 0) {
+            if (item.rawScore && topScore > 0) {
+               // บัญญัติไตรยางค์: (คะแนนเรื่องนี้ * 98) / คะแนนอันดับ 1
+               percent = Math.floor((item.rawScore * 98) / topScore);
+               if (percent >= 98) percent = 98 - index; // กันกรณีเลขซ้ำ
+            } else {
+               percent = 98 - (index * 2); // สำรองถ้าไม่มีคะแนน
+            }
+          }
+          
+          return {
+            ...item,
+            rank: index + 1, // 👉 สร้างตัวแปร rank ตรงนี้ เพื่อให้แสดงเลขอันดับ 4-10
+            matchPercent: percent // ทับด้วยเปอร์เซ็นต์ที่คำนวณใหม่
+          };
+        });
+
+        // อัปเดตข้อมูลใส่ State
+        setRecommended(formattedRecs);
+        setTrendingMovies(movieData.results || []);
+        setTrendingTVs(tvData.results || []);
+
       } catch (error) {
-        console.error("Error fetching home data:", error);
+        console.error("Error fetching data:", error);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchHomeData();
+
+    fetchData();
   }, []);
 
-  // ฟังก์ชันกด Like / Dislike แบบติดตั้งระบบรักษาความปลอดภัย JWT Token
 const handleVote = async (movie, type) => {
-    const token = localStorage.getItem('cinematch_token');
+    const token = localStorage.getItem('cinematch_token'); // 👈 แก้ให้เหลือแค่นี้ครับ
     if (!token) {
-      toast.error('กรุณาล็อกอินก่อนบันทึกความชอบครับ');
+      toast.error('กรุณาล็อกอินก่อนบันทึกความชอบ');
       return;
     }
-    
-    try {
-      await axios.post('http://localhost:5000/api/likes', 
-        {
-          film_id: movie.id,
-          film_title: movie.title || movie.name,
-          type: type
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
+
+    // ✅ 1. Machine Learning: ให้ AI เรียนรู้และอัปเดตน้ำหนักความชอบทันที (ไม่ต้องรอ API)
+    if (movie.genre_ids) {
+      const GENRE_MAP_ID_TO_NAME = {
+        28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
+        99: "สารคดี", 18: "ดราม่าเข้มข้น", 10751: "ครอบครัว", 14: "แฟนตาซีเวทมนตร์", 36: "ประวัติศาสตร์",
+        27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับซ่อนเงื่อน", 10749: "โรแมนติก", 878: "ไซไฟอวกาศ",
+        10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
+      };
+
+      // ดึงของเก่ามา ถ้าไม่มีให้สร้างใหม่
+      let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+      if (!prefs.genreWeights) prefs.genreWeights = {};
+
+      // คำนวณคะแนน
+      movie.genre_ids.forEach(id => {
+        const genreName = GENRE_MAP_ID_TO_NAME[id];
+        if (genreName) {
+          if (type === 'like') {
+            prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
+          } else if (type === 'dislike' && prefs.genreWeights[genreName]) {
+            prefs.genreWeights[genreName] = Math.max(0, prefs.genreWeights[genreName] - 2);
+          }
         }
+      });
+      
+      // บันทึกค่าน้ำหนักที่เรียนรู้ใหม่ลง Local Storage ทันที
+      localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
+    }
+
+    // 2. ยิง API เซฟลงฐานข้อมูลหลังบ้าน
+    try {
+      await axios.post('http://172.20.10.2:5000/api/likes', 
+        { film_id: movie.id, film_title: movie.title || movie.name, poster_path: movie.poster_path, type: type },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      // เปลี่ยนจาก alert เป็น toast
-      if (type === 'like') {
-        toast.success('เพิ่มลงในรายการโปรดแล้ว! ❤️');
-      } else {
-        toast.success('ซ่อนหนังเรื่องนี้แล้ว 👎');
-      }
+      toast.success(type === 'like' ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
     } catch (error) {
-      console.error('Vote Error:', error);
-      toast.error(error.response?.data?.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+      console.error("API Vote Error:", error);
+      toast.error('เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล แต่ระบบจดจำความชอบให้แล้ว');
     }
   };
 
@@ -93,7 +153,6 @@ const handleVote = async (movie, type) => {
   const handleMovieClick = async (item) => {
     setSelectedMovie(item); 
     setDetailedMovie(null); 
-
     try {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
       const type = item.media_type || (item.first_air_date ? 'tv' : 'movie');
@@ -112,10 +171,11 @@ const handleVote = async (movie, type) => {
       const castArray = thData.credits?.cast?.slice(0, 8) || [];
       const genres = thData.genres?.map(g => g.name).join(', ') || 'ไม่ระบุ';
 
-      const allProviders = thData.watch?.providers?.results || {};
+      // ✅ แก้ไขจุดนี้: เปลี่ยนจาก thData.watch?.providers เป็น thData['watch/providers']
+      const allProviders = thData['watch/providers']?.results || {};
       const mergedProviders = { flatrate: [], rent: [], buy: [] };
       const seenIds = new Set();
-
+      
       const addProvidersFromRegion = (regionCode) => {
         if (allProviders[regionCode]) {
           ['flatrate', 'rent', 'buy'].forEach(ptype => {
@@ -131,9 +191,10 @@ const handleVote = async (movie, type) => {
         }
       };
 
+      // ดึงข้อมูลจากไทย (TH) ก่อน ถ้าไม่มีค่อยดึงจาก US, KR, JP, GB มาสำรองให้
       ['TH', 'US', 'KR', 'JP', 'GB'].forEach(addProvidersFromRegion);
       if (seenIds.size === 0) Object.keys(allProviders).forEach(addProvidersFromRegion);
-
+      
       ['flatrate', 'rent', 'buy'].forEach(ptype => {
         mergedProviders[ptype].sort((a, b) => a.display_priority - b.display_priority);
         mergedProviders[ptype] = mergedProviders[ptype].slice(0, 4); 
@@ -142,17 +203,22 @@ const handleVote = async (movie, type) => {
       let inTheaters = false;
       if (type === 'movie' && thData.release_date) {
         const releaseDate = new Date(thData.release_date);
-        const today = new Date();
-        const diffDays = Math.ceil((today - releaseDate) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.ceil((new Date() - releaseDate) / (1000 * 60 * 60 * 24));
         if (diffDays >= -30 && diffDays <= 60) inTheaters = true;
       }
 
-      setDetailedMovie({
-        ...thData, media_type: type, displayOverview: finalOverview, providers: mergedProviders,
-        directorName: director ? director.name : 'ไม่ระบุ', cast: castArray, genreNames: genres, inTheaters
+      setDetailedMovie({ 
+        ...thData, 
+        media_type: type, 
+        displayOverview: finalOverview, 
+        providers: mergedProviders, 
+        directorName: director ? director.name : 'ไม่ระบุ', 
+        cast: castArray, 
+        genreNames: genres, 
+        inTheaters 
       });
-    } catch (error) {
-      console.error("Error fetching details", error);
+    } catch (error) { 
+      console.error("Error fetching details", error); 
     }
   };
 
@@ -164,114 +230,161 @@ const handleVote = async (movie, type) => {
     } else {
       if (!movie.runtime) return 'N/A';
       const h = Math.floor(movie.runtime / 60);
-      const m = movie.runtime % 60;
-      return h > 0 ? `${h} ชม. ${m} นาที` : `${m} นาที`;
+      return h > 0 ? `${h} ชม. ${movie.runtime % 60} นาที` : `${movie.runtime % 60} นาที`;
     }
   };
 
-  const moodTags = [
-    { label: 'เดือดสุดระทึก', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg> },
-    { label: 'ตลกขบขันเบาสมอง', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
-    { label: 'โรแมนติกอบอุ่นหัวใจ', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg> },
-    { label: 'สยองขวัญสั่นประสาท', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> },
-    { label: 'หักมุมเดาทางยาก', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> }
-  ];
-
   const MovieCard = ({ item, isTV }) => {
     const title = isTV ? item.name : item.title;
-    const originalTitle = isTV ? item.original_name : item.original_title;
     const year = isTV ? item.first_air_date?.substring(0, 4) : item.release_date?.substring(0, 4);
 
     return (
       <div className="min-w-36 max-w-36 md:min-w-44 md:max-w-44 flex flex-col h-full group bg-white rounded-2xl p-2.5 shadow-[0_4px_15px_rgba(33,1,0,0.03)] border border-[#FECE79]/30 hover:shadow-md transition-shadow relative">
         <div onClick={() => handleMovieClick({...item, media_type: isTV ? 'tv' : 'movie'})} className="relative w-full aspect-3/4 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
           <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-          
           <div className="absolute top-2 right-2 bg-[#210100]/80 backdrop-blur-sm text-[#FECE79] text-xs font-black px-2 py-1 rounded-md flex items-center gap-1 z-10">
-            <svg className="w-3 h-3 text-[#E6A341]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-            {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
+            ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
           </div>
-
           <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
-            <button onClick={(e) => { e.stopPropagation(); handleVote(item, 'dislike'); }} className="w-8 h-8 md:w-9 md:h-9 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 hover:bg-[#8C0902] shadow-lg transition-transform border border-white/20">
-              <svg className="w-4 h-4 md:w-5 md:h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); handleVote(item, 'like'); }} className="w-8 h-8 md:w-9 md:h-9 bg-[#E6A341]/90 backdrop-blur-md rounded-full text-[#210100] flex items-center justify-center hover:scale-110 hover:bg-[#E6A341] shadow-lg transition-transform border border-white/20">
-              <svg className="w-4 h-4 md:w-5 md:h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
-            </button>
+            <button onClick={(e) => { e.stopPropagation(); handleVote(item, 'dislike'); }} className="w-8 h-8 md:w-9 md:h-9 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 hover:bg-[#8C0902] shadow-lg transition-transform border border-white/20"><svg className="w-4 h-4 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg></button>
+            <button onClick={(e) => { e.stopPropagation(); handleVote(item, 'like'); }} className="w-8 h-8 md:w-9 md:h-9 bg-[#E6A341]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 hover:bg-[#E6A341] shadow-lg transition-transform border border-white/20"><svg className="w-4 h-4 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg></button>
           </div>
         </div>
         <div className="flex flex-col grow px-1">
           <h3 className="font-extrabold text-[#210100] text-sm leading-snug line-clamp-2" title={title}>{title}</h3>
-          <p className="text-[#210100]/50 text-[10px] md:text-xs truncate italic mt-0.5" title={originalTitle}>{originalTitle}</p>
-          <p className="text-[#B14A36] font-bold text-[11px] md:text-xs mt-1.5 mb-3">{year || "N/A"} • {isTV ? 'TV Series' : 'Movie'}</p>
-          <div className="mt-auto pt-2 border-t border-[#FECE79]/30 w-full">
-            <button onClick={() => handleMovieClick({...item, media_type: isTV ? 'tv' : 'movie'})} className="w-full text-[#8C0902] font-extrabold text-xs text-center hover:text-[#B14A36] transition-colors py-1">
-              ดูรายละเอียด
-            </button>
-          </div>
+          <p className="text-[#B14A36] font-bold text-xs mt-1">{year || "N/A"}</p>
         </div>
       </div>
     );
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-40">
-        <div className="w-12 h-12 border-4 border-[#FECE79] border-t-[#8C0902] rounded-full animate-spin mb-5"></div>
-      </div>
-    );
+    return <div className="flex flex-col items-center justify-center py-40"><div className="w-12 h-12 border-4 border-[#FECE79] border-t-[#8C0902] rounded-full animate-spin mb-5"></div></div>;
   }
+
+  const top1 = recommended[0];
+  const top2 = recommended[1];
+  const top3 = recommended[2];
+  const otherRanks = recommended.slice(3); 
 
   return (
     <div className="w-full pb-20 animate-fade-in relative">
-      <div className="max-w-7xl mx-auto px-6 mt-8 mb-16">
-        <div className="bg-linear-to-br from-[#FECE79]/30 via-[#FFFDF9] to-[#E6A341]/10 rounded-3xl p-8 md:p-16 flex flex-col items-center justify-center border border-[#FECE79]/40 shadow-[0_10px_40px_rgba(230,163,65,0.08)] relative overflow-hidden text-center">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-[#210100] mb-8 tracking-tight leading-tight">
-            ค้นหาภาพยนตร์ <br className="hidden sm:block"/>
-            <span className="text-[#8C0902]">ที่ตรงใจคุณและเพื่อน</span>
-          </h1>
-          
-          <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
-            <button onClick={() => setStep(1)} className="bg-[#8C0902] hover:bg-[#210100] text-white font-extrabold text-sm md:text-base py-4 px-8 rounded-full transition-all shadow-[0_8px_20px_rgba(140,9,2,0.25)] hover:-translate-y-1 flex items-center gap-2 w-full sm:w-auto justify-center">
-              <svg className="w-5 h-5 text-[#FECE79]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.866 8.21 8.21 0 0 0 3 2.48Z" /></svg>
-              สร้างห้องจับคู่ (Duo)
-            </button>
-            <button onClick={() => setStep(4)} className="bg-white hover:bg-[#FFFDF9] border-2 border-[#FECE79] text-[#8C0902] font-extrabold text-sm md:text-base py-3.5 px-8 rounded-full transition-all hover:shadow-md w-full sm:w-auto justify-center">
-              ไปหน้าค้นหาและฟิลเตอร์
-            </button>
+      
+      <div className="max-w-7xl mx-auto px-6 mt-8 mb-12">
+        <div className="bg-linear-to-br from-[#FECE79]/30 via-[#FFFDF9] to-[#E6A341]/10 rounded-3xl p-8 md:p-12 flex flex-col items-center justify-center border border-[#FECE79]/40 shadow-[0_10px 40px_rgba(230,163,65,0.08)] relative text-center">
+          <h1 className="text-3xl md:text-5xl font-black text-[#210100] mb-6 tracking-tight leading-tight">ค้นหาภาพยนตร์ <span className="text-[#8C0902]">ที่ตรงใจคุณและเพื่อน</span></h1>
+          <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full">
+            <button onClick={() => setStep(1)} className="bg-[#8C0902] hover:bg-[#210100] text-white font-extrabold text-sm md:text-base py-4 px-8 rounded-full transition-all shadow-lg hover:-translate-y-1 flex items-center justify-center gap-2 w-full sm:w-auto"><svg className="w-5 h-5 text-[#FECE79]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.866 8.21 8.21 0 0 0 3 2.48Z" /></svg> สร้างห้องจับคู่ </button>
+            <button onClick={() => setStep(4)} className="bg-white border-2 border-[#FECE79] text-[#8C0902] hover:bg-[#FFFDF9] font-extrabold text-sm md:text-base py-3.5 px-8 rounded-full transition-all w-full sm:w-auto">ไปหน้าค้นหา</button>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 space-y-16">
-        <section>
-          <p className="text-[#B14A36] font-bold text-sm mb-4">สำรวจตามมู้ดอารมณ์</p>
-          <div className="flex flex-wrap gap-3">
-            {moodTags.map((tag, i) => (
-              <button key={i} onClick={() => setStep(4)} className="bg-white border border-[#FECE79]/60 hover:border-[#E6A341] text-[#210100] hover:text-[#8C0902] hover:bg-[#FECE79]/10 font-bold text-sm py-2 px-4 rounded-full transition-all hover:-translate-y-1 shadow-sm flex items-center gap-2">
-                <span className="text-[#8C0902]">{tag.icon}</span>{tag.label}
-              </button>
-            ))}
+        
+        <section className="bg-white border-2 border-[#FECE79]/40 rounded-3xl p-6 md:p-10 shadow-[0_8px_30px_rgba(230,163,65,0.05)]">
+          <div className="text-center mb-10">
+            <span className="bg-[#8C0902] text-[#FECE79] px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest shadow-md">Top 10 For You</span>
+            <h2 className="text-3xl md:text-4xl font-black text-[#210100] tracking-tight mt-4 mb-2">ภาพยนตร์ที่ตรงใจคุณที่สุด</h2>
+            <p className="text-[#B14A36] font-medium text-sm">ประมวลผลและคัดกรองจากคำตอบในแบบทดสอบของคุณ</p>
           </div>
-        </section>
 
-        <section>
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-black text-[#210100] tracking-tight">คัดสรรมาเพื่อคุณโดยเฉพาะ</h2>
-              <p className="text-[#B14A36] font-medium text-sm mt-1">สวัสดีคุณ {currentUser?.name} อ้างอิงจากควิซความชอบของคุณ</p>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-10">
+            
+            {/* --- อันดับ 1 (ลดขนาดลง 5%) --- */}
+            {top1 && (
+              <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1]" onClick={() => handleMovieClick(top1)}>
+                <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/95 via-black/40 to-transparent flex flex-col justify-end p-6 md:p-10">
+                  <div className="absolute top-4 left-4 md:top-6 md:left-6 flex flex-col items-start gap-2 z-10">
+                    <div className="bg-linear-to-br from-[#FFD700] to-[#E6A341] text-[#210100] w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center font-black text-2xl md:text-4xl shadow-[0_0_20px_rgba(255,215,0,0.6)] border-4 border-white/50 backdrop-blur-md">1</div>
+                    <span className="bg-[#210100]/80 text-[#FECE79] px-3 py-1.5 rounded-full text-[10px] md:text-xs font-black shadow-md border border-[#FECE79]/30 backdrop-blur-sm">🎯 {top1.matchPercent}% Match</span>
+                  </div>
+
+                  <div className="relative z-10 w-full mt-auto">
+                    <h3 className="text-3xl md:text-5xl font-black text-white leading-tight mb-4 line-clamp-2 drop-shadow-lg">{top1.title}</h3>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button className="bg-[#8C0902] hover:bg-[#E6A341] hover:text-[#210100] text-white font-extrabold py-2.5 px-6 rounded-full transition-colors shadow-lg text-sm">ดูรายละเอียด</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleVote(top1, 'dislike'); }} className="w-10 h-10 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 shadow-lg border border-white/20"><svg className="w-5 h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleVote(top1, 'like'); }} className="w-10 h-10 bg-[#E6A341]/90 backdrop-blur-md rounded-full text-[#210100] flex items-center justify-center hover:scale-110 shadow-lg border border-white/20"><svg className="w-5 h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-6">
+              {[top2, top3].map((movie, idx) => movie && (
+                <div key={movie.id} onClick={() => handleMovieClick(movie)} className={`w-full h-full min-h-50 sm:min-h-auto relative group rounded-3xl overflow-hidden shadow-lg border-2 cursor-pointer flex flex-col justify-end p-5 ${idx === 0 ? 'border-[#C0C0C0]' : 'border-[#CD7F32]'}`}>
+                  <img src={`https://image.tmdb.org/t/p/w780${movie.backdrop_path}`} alt={movie.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-all duration-700 bg-black" />
+                  <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+                    <div className={`text-[#210100] w-10 h-10 rounded-full flex items-center justify-center font-black text-lg border-2 border-white/40 shadow-md ${idx === 0 ? 'bg-linear-to-br from-gray-100 to-gray-400' : 'bg-linear-to-br from-orange-200 to-orange-500'}`}>
+                      {idx + 2}
+                    </div>
+                  </div>
+                  <div className="absolute top-3 right-3 z-10">
+                    <span className="bg-[#210100]/80 text-[#FECE79] px-2 py-1 rounded-md text-[10px] font-black shadow-md border border-[#FECE79]/30 backdrop-blur-sm">🎯 {movie.matchPercent}% Match</span>
+                  </div>
+                  <div className="relative z-10 mt-auto w-full">
+                    <h3 className="text-xl md:text-2xl font-black text-white line-clamp-1 mb-3 drop-shadow-md">{movie.title}</h3>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); handleVote(movie, 'dislike'); }} className="w-8 h-8 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 border border-white/20"><svg className="w-4 h-4 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleVote(movie, 'like'); }} className="w-8 h-8 bg-[#E6A341]/90 backdrop-blur-md rounded-full text-[#210100] flex items-center justify-center hover:scale-110 border border-white/20"><svg className="w-4 h-4 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg></button>
+                      </div>
+                      <button className="text-white bg-white/20 hover:bg-white hover:text-black rounded-full p-2 backdrop-blur-sm transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            <ScrollButtons scrollRef={recScrollRef} />
           </div>
-          <div ref={recScrollRef} className="flex overflow-x-auto gap-5 pb-6 pt-2 scrollbar-hide snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {recommended.map(item => (<div key={item.id} className="snap-start shrink-0"><MovieCard item={item} isTV={false} /></div>))}
+
+          {/* --- อันดับ 4-10: ย้ายปุ่ม Like/Dislike มาไว้ซ้าย-ขวาล่าง และ % Match ไปขวาบน --- */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-lg font-black text-[#210100]">อันดับ 4 - 10</h4>
+              <ScrollButtons scrollRef={recSmallScrollRef} />
+            </div>
+            <div ref={recSmallScrollRef} className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {otherRanks.map((movie) => (
+                <div key={movie.id} onClick={() => handleMovieClick(movie)} className="snap-start min-w-35 max-w-35 relative group cursor-pointer flex flex-col">
+                  <div className="w-full aspect-2/3 rounded-xl overflow-hidden shadow-sm border border-[#FECE79]/40 relative bg-gray-100 mb-2">
+                    <img src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`} alt={movie.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    
+                    {/* อันดับ (มุมซ้ายบน) */}
+                    <div className="absolute top-0 left-0 bg-[#210100]/90 text-white w-8 h-8 rounded-br-xl font-black flex items-center justify-center text-sm shadow-md backdrop-blur-sm z-10">
+                      {movie.rank}
+                    </div>
+                    
+                    {/* % Match (มุมขวาบน สไตล์เดียวกับ Top 1-3) */}
+                    <div className="absolute top-2 right-2 z-10">
+                      <span className="bg-[#210100]/80 text-[#FECE79] px-2 py-1 rounded-md text-[10px] font-black shadow-md border border-[#FECE79]/30 backdrop-blur-sm">
+                        🎯 {movie.matchPercent}% Match
+                      </span>
+                    </div>
+                    
+                    {/* ปุ่ม Like/Dislike (มุมซ้ายล่างและขวาล่าง สไตล์เดียวกับแถวปกติ) */}
+                    <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-10">
+                      <button onClick={(e) => { e.stopPropagation(); handleVote(movie, 'dislike'); }} className="w-8 h-8 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 shadow-lg border border-white/20 transition-transform">
+                        <svg className="w-4 h-4 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleVote(movie, 'like'); }} className="w-8 h-8 bg-[#E6A341]/90 backdrop-blur-md rounded-full text-[#210100] flex items-center justify-center hover:scale-110 shadow-lg border border-white/20 transition-transform">
+                        <svg className="w-4 h-4 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                      </button>
+                    </div>
+
+                  </div>
+                  <h3 className="font-bold text-[#210100] text-xs line-clamp-2 group-hover:text-[#8C0902] transition-colors text-center px-1">{movie.title}</h3>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
         <section>
           <div className="flex items-end justify-between mb-6">
-            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ภาพยนตร์กำลังฮิต</h2>
+            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ภาพยนตร์กำลังฮิตในไทย</h2>
             <ScrollButtons scrollRef={movieScrollRef} />
           </div>
           <div ref={movieScrollRef} className="flex overflow-x-auto gap-5 pb-6 pt-2 scrollbar-hide snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -281,7 +394,7 @@ const handleVote = async (movie, type) => {
 
         <section>
           <div className="flex items-end justify-between mb-6">
-            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ซีรีส์กำลังฮิต</h2>
+            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ซีรีส์ที่คนพูดถึงเยอะสุด</h2>
             <ScrollButtons scrollRef={tvScrollRef} />
           </div>
           <div ref={tvScrollRef} className="flex overflow-x-auto gap-5 pb-6 pt-2 scrollbar-hide snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -290,40 +403,42 @@ const handleVote = async (movie, type) => {
         </section>
       </div>
 
-      {/* MODAL ป็อปอัป */}
       {selectedMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-[#210100]/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[95vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">
+          <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">
             <button onClick={() => setSelectedMovie(null)} className="absolute top-4 right-4 bg-white/90 hover:bg-white rounded-full p-2 z-30 shadow-md transition-transform hover:scale-110">
               <svg className="w-5 h-5 text-[#8C0902]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
             <div className="w-full md:w-[35%] h-64 md:h-auto shrink-0 relative bg-[#FECE79]/20">
               <img src={`https://image.tmdb.org/t/p/w500${selectedMovie.poster_path}`} alt={selectedMovie.title || selectedMovie.name} className="w-full h-full object-cover" />
             </div>
-            <div className="p-6 md:p-8 w-full md:w-[65%] flex flex-col overflow-y-auto custom-scrollbar">
+            
+            <div className="w-full md:w-[65%] p-6 md:p-8 flex flex-col overflow-y-auto custom-scrollbar">
               <div className="mb-4">
                 <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">{selectedMovie.media_type === 'tv' ? 'TV Series' : 'Movie'}</span>
                 <h2 className="text-3xl md:text-4xl font-black text-[#210100] leading-tight mb-1">{selectedMovie.title || selectedMovie.name}</h2>
-                <p className="text-[#210100]/60 text-sm italic mb-2">{selectedMovie.original_title || selectedMovie.original_name}</p>
+                <p className="text-[#210100]/60 text-sm italic mb-3">{selectedMovie.original_title || selectedMovie.original_name}</p>
                 <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-[#B14A36]">
                   <span>{selectedMovie.release_date?.substring(0,4) || selectedMovie.first_air_date?.substring(0,4) || "N/A"}</span><span>•</span>
                   <span>{detailedMovie ? formatRuntime(detailedMovie) : "กำลังคำนวณเวลา..."}</span><span>•</span>
                   <span className="flex items-center gap-1 bg-[#E6A341]/20 px-2 py-0.5 rounded text-[#8C0902]">
-                    <svg className="w-4 h-4 text-[#E6A341]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg> {selectedMovie.vote_average?.toFixed(1) || "N/A"}
+                    ★ {selectedMovie.vote_average?.toFixed(1) || "N/A"}
                   </span>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto pr-2 min-h-0 custom-scrollbar mb-4">
+              
+              <div className="mb-6">
                 <p className="text-[#210100]/80 text-sm md:text-base leading-relaxed font-medium">{detailedMovie ? detailedMovie.displayOverview : (selectedMovie.overview || "กำลังโหลดข้อมูลเจาะลึก...")}</p>
               </div>
+
               {detailedMovie && (
-                <div className="shrink-0 mb-4 bg-[#FECE79]/10 p-3.5 rounded-xl border border-[#FECE79]/30">
+                <div className="mb-6 bg-[#FECE79]/10 p-4 rounded-xl border border-[#FECE79]/30">
                   <p className="text-xs md:text-sm text-[#210100] mb-2"><span className="font-extrabold text-[#8C0902]">หมวดหมู่:</span> {detailedMovie.genreNames}</p>
                   {selectedMovie.media_type !== 'tv' && <p className="text-xs md:text-sm text-[#210100] mb-3"><span className="font-extrabold text-[#8C0902]">ผู้กำกับ:</span> {detailedMovie.directorName}</p>}
                   <p className="text-xs md:text-sm font-extrabold text-[#8C0902] mb-2">นักแสดงนำ:</p>
                   <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
                     {detailedMovie.cast.map(actor => (
-                      <div key={actor.id} className="flex flex-col items-center w-15 shrink-0 group">
+                      <div key={actor.id} className="flex flex-col items-center w-16 shrink-0 group">
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-white mb-1.5 border border-[#FECE79] shadow-sm group-hover:border-[#E6A341] transition-colors">
                           {actor.profile_path ? (
                             <img src={`https://image.tmdb.org/t/p/w185${actor.profile_path}`} alt={actor.name} className="w-full h-full object-cover" />
@@ -333,41 +448,40 @@ const handleVote = async (movie, type) => {
                             </div>
                           )}
                         </div>
-                        <span className="text-[9px] text-[#210100] text-center leading-tight line-clamp-2">{actor.name}</span>
+                        <span className="text-[10px] text-[#210100] text-center leading-tight line-clamp-2">{actor.name}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="shrink-0 pt-4 border-t border-[#FECE79]/40">
-                <div className="mb-4">
-                  <h4 className="text-xs font-bold text-[#8C0902] mb-3">ช่องทางการรับชม:</h4>
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {detailedMovie ? (
-                      <>
-                        {detailedMovie.inTheaters && (
-                          <div className="flex items-center gap-1.5 bg-[#FFFDF9] border border-[#FECE79]/50 rounded-lg p-1.5 pr-3 shadow-sm">
-                            <div className="w-7 h-7 rounded-md bg-[#8C0902] flex items-center justify-center text-white"><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M18 4v1h-2V4c0-.55-.45-1-1-1H9c-.55 0-1 .45-1 1v1H6V4c0-.55-.45-1-1-1s-1 .45-1 1v16c0 .55.45 1 1 1s1-.45 1-1v-1h2v1c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-1h2v1c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1s-1 .45-1 1zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"/></svg></div>
-                            <span className="text-[10px] font-bold text-[#210100]">โรงภาพยนตร์</span>
-                          </div>
-                        )}
-                        {(detailedMovie.providers.flatrate.length > 0 || detailedMovie.providers.rent.length > 0 || detailedMovie.providers.buy.length > 0) ? (
-                          ['flatrate', 'rent', 'buy'].map(type => 
-                            detailedMovie.providers[type].map(provider => (
-                              <div key={provider.provider_id + type} className="flex items-center gap-1.5 bg-[#FFFDF9] border border-[#FECE79]/50 rounded-lg p-1.5 pr-3 shadow-sm" title={`${provider.provider_name} (${type})`}>
-                                <img src={`https://image.tmdb.org/t/p/original${provider.logo_path}`} className="w-7 h-7 rounded-md object-cover" alt={provider.provider_name}/>
-                                <span className="text-[10px] font-bold text-[#210100] capitalize">{type === 'flatrate' ? 'สตรีม' : type === 'rent' ? 'เช่า' : 'ซื้อ'}</span>
-                              </div>
-                            ))
-                          )
-                        ) : (!detailedMovie.inTheaters && <p className="text-xs text-[#B14A36] font-medium bg-[#B14A36]/10 inline-block px-3 py-1.5 rounded-lg">รออัปเดตช่องทางสตรีมมิ่งอย่างเป็นทางการ</p>)}
-                      </>
-                    ) : <p className="text-xs text-[#E6A341] animate-pulse">กำลังตรวจสอบช่องทางรับชม...</p>}
-                  </div>
-                  <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent((selectedMovie.title || selectedMovie.name) + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>ดูตัวอย่าง Trailer
-                  </a>
+
+              <div className="mt-auto pt-4 border-t border-[#FECE79]/40">
+                <h4 className="text-xs font-bold text-[#8C0902] mb-3">ช่องทางการรับชม:</h4>
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {detailedMovie ? (
+                    <>
+                      {detailedMovie.inTheaters && (
+                        <div className="flex items-center gap-1.5 bg-[#FFFDF9] border border-[#FECE79]/50 rounded-lg p-1.5 pr-3 shadow-sm">
+                          <div className="w-7 h-7 rounded-md bg-[#8C0902] flex items-center justify-center text-white"><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M18 4v1h-2V4c0-.55-.45-1-1-1H9c-.55 0-1 .45-1 1v1H6V4c0-.55-.45-1-1-1s-1 .45-1 1v16c0 .55.45 1 1 1s1-.45 1-1v-1h2v1c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-1h2v1c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1s-1 .45-1 1zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"/></svg></div>
+                          <span className="text-[10px] font-bold text-[#210100]">โรงภาพยนตร์</span>
+                        </div>
+                      )}
+                      {(detailedMovie.providers.flatrate.length > 0 || detailedMovie.providers.rent.length > 0 || detailedMovie.providers.buy.length > 0) ? (
+                        ['flatrate', 'rent', 'buy'].map(type => 
+                          detailedMovie.providers[type].map(provider => (
+                            <div key={provider.provider_id + type} className="flex items-center gap-1.5 bg-[#FFFDF9] border border-[#FECE79]/50 rounded-lg p-1.5 pr-3 shadow-sm" title={`${provider.provider_name} (${type})`}>
+                              <img src={`https://image.tmdb.org/t/p/original${provider.logo_path}`} className="w-7 h-7 rounded-md object-cover" alt={provider.provider_name}/>
+                              <span className="text-[10px] font-bold text-[#210100] capitalize">{type === 'flatrate' ? 'สตรีม' : type === 'rent' ? 'เช่า' : 'ซื้อ'}</span>
+                            </div>
+                          ))
+                        )
+                      ) : (!detailedMovie.inTheaters && <p className="text-xs text-[#B14A36] font-medium bg-[#B14A36]/10 inline-block px-3 py-1.5 rounded-lg">รออัปเดตช่องทางสตรีมมิ่งอย่างเป็นทางการ</p>)}
+                    </>
+                  ) : <p className="text-xs text-[#E6A341] animate-pulse">กำลังตรวจสอบช่องทางรับชม...</p>}
                 </div>
+                <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent((selectedMovie.title || selectedMovie.name) + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>ดูตัวอย่าง Trailer
+                </a>
               </div>
             </div>
           </div>

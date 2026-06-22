@@ -1,74 +1,110 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import toast from 'react-hot-toast';
 
 export default function RoomSetup({ onNext }) {
-  const [nameInput, setNameInput] = useState("");
-  const [pinInput, setPinInput] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [mode, setMode] = useState('create'); // 'create' = สร้างห้อง, 'join' = เข้าร่วมห้อง
+  const [name, setName] = useState('');
+  const [pin, setPin] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreateRoom = () => {
-    const finalName = nameInput.trim() !== "" ? nameInput : "Host Player";
-    // อัปเดต: สุ่มรหัส PIN 5 หลัก (10000 - 99999)
-    const generatedPin = Math.floor(10000 + Math.random() * 90000).toString();
-    
-    localStorage.setItem('cinematch_room', JSON.stringify({
-      pin: generatedPin,
-      hostName: finalName,
-      guestName: null,
-      status: 'waiting'
-    }));
-
-    onNext(finalName, 'host', generatedPin);
-  };
-
-  const handleJoinRoom = () => {
-    // อัปเดต: เช็กว่ากรอกครบ 5 หลักหรือยัง
-    if (pinInput.length !== 5) {
-      setErrorMsg("กรุณากรอกรหัส PIN ให้ครบ 5 หลักครับ");
-      return;
+  // พยายามดึงชื่อจากข้อมูลผู้ใช้ที่ล็อกอินอยู่มาเป็นค่าเริ่มต้น
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('cinematch_token');
+      if (token) {
+        // ถอดรหัส token เพื่อเอาชื่อมาโชว์ (ถ้าทำได้) หรือให้กรอกเอง
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const userData = JSON.parse(jsonPayload);
+        if (userData.name) setName(userData.name);
+      }
+    } catch (e) {
+      // ปล่อยผ่านให้กรอกชื่อเอง
     }
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return toast.error("กรุณากรอกชื่อของคุณ");
+
+    setIsLoading(true);
+    const token = localStorage.getItem('cinematch_token');
     
-    const roomData = JSON.parse(localStorage.getItem('cinematch_room'));
-    if (roomData && roomData.pin === pinInput) {
-      const finalName = nameInput.trim() !== "" ? nameInput : "Guest Player";
-      
-      roomData.guestName = finalName;
-      roomData.status = 'joined';
-      localStorage.setItem('cinematch_room', JSON.stringify(roomData));
-      
-      onNext(finalName, 'guest', pinInput);
-    } else {
-      setErrorMsg("ไม่พบรหัสห้องนี้ กรุณาลองใหม่อีกครั้ง");
+    // ดึงคะแนนนิสัยของตัวเองจากเครื่อง
+    const storedPrefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{}');
+    const genreWeights = storedPrefs.genreWeights || {};
+
+    try {
+      if (mode === 'create') {
+        // ยิง API สร้างห้อง (เป็น Host)
+        const res = await axios.post('http://172.20.10.2:5000/api/rooms/create', 
+          { hostName: name, genreWeights },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success('สร้างห้องสำเร็จ!');
+        onNext(name, 'host', res.data.pin); // ส่งชื่อ, บทบาท, และรหัส PIN ไปหน้า RoomSync
+      } else {
+        // ยิง API เข้าร่วมห้อง (เป็น Guest)
+        if (!pin.trim() || pin.length !== 6) return toast.error("กรุณากรอกรหัส PIN 6 หลักให้ถูกต้อง");
+        
+        await axios.post('http://172.20.10.2:5000/api/rooms/join', 
+          { pin, guestName: name, genreWeights },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success('เข้าร่วมห้องสำเร็จ!');
+        onNext(name, 'guest', pin);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto mt-16 px-6 animate-fade-in">
-      <div className="text-center mb-12">
-        <h1 className="text-3xl md:text-4xl font-extrabold text-[#210100] mb-3 tracking-tight">ห้องจับคู่ภาพยนตร์ (Duo Mode)</h1>
-      </div>
+    <div className="min-h-screen bg-[#FFFDF9] flex items-center justify-center p-6 animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-xl border-2 border-[#FECE79]/40 relative overflow-hidden">
+        
+        <button onClick={() => window.location.reload()} className="absolute top-6 left-6 text-[#B14A36] hover:text-[#8C0902]">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+        </button>
 
-      <div className="max-w-md mx-auto bg-white p-6 rounded-2xl border border-[#FECE79]/40 mb-12 shadow-[0_4px_20px_rgba(33,1,0,0.03)]">
-        <label className="block text-xs font-black text-[#B14A36] uppercase mb-2.5">ชื่อของคุณ</label>
-        <input type="text" value={nameInput} onChange={(e) => setNameInput(e.target.value)} className="w-full bg-[#FFFDF9] border border-[#FECE79] rounded-xl px-4 py-3.5 text-[#210100] outline-none focus:border-[#E6A341] transition-all font-medium" />
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-8 max-w-3xl mx-auto">
-        <div className="bg-white p-8 rounded-3xl border border-[#FECE79]/40 flex-1 text-center flex flex-col shadow-[0_4px_25px_rgba(33,1,0,0.04)]">
-          <h2 className="text-xl font-extrabold text-[#210100] mb-1.5">สร้างห้องใหม่ (Host)</h2>
-          <p className="text-sm text-[#B14A36] font-medium mb-10">ระบบจะสร้างรหัส PIN ให้คุณแชร์ให้เพื่อน</p>
-          <button onClick={handleCreateRoom} className="mt-auto w-full bg-[#8C0902] text-white font-bold py-4 rounded-2xl hover:bg-[#210100] transition-all active:scale-[0.98] shadow-md shadow-[#8C0902]/20">สร้างห้อง (Create Room)</button>
+        <div className="text-center mb-8 mt-2">
+          <span className="bg-[#FECE79]/30 text-[#8C0902] text-[10px] font-black px-3 py-1 rounded-full tracking-widest uppercase">
+            Duo Match
+          </span>
+          <h1 className="text-2xl font-black text-[#210100] mt-4 mb-2">จับคู่หาหนังที่ใช่</h1>
+          <p className="text-[#B14A36] text-sm font-medium">สร้างห้อง หรือใส่รหัสเพื่อเชื่อมต่อกับเพื่อน</p>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl border border-[#FECE79]/40 flex-1 text-center flex flex-col shadow-[0_4px_25px_rgba(33,1,0,0.04)]">
-          <h2 className="text-xl font-extrabold text-[#210100] mb-1.5">เข้าร่วมห้อง (Guest)</h2>
-          <p className="text-sm text-[#B14A36] font-medium mb-4">ใส่รหัส PIN 5 หลักจากเพื่อนของคุณ</p>
-          
-          {/* อัปเดต: เปลี่ยน maxLength เป็น 5 */}
-          <input type="text" maxLength="5" value={pinInput} onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))} placeholder="*****" className="w-full bg-[#FFFDF9] border border-[#FECE79] focus:border-[#E6A341] rounded-2xl px-4 py-3.5 mb-2 text-center tracking-[0.4em] font-black text-2xl outline-none transition-all shadow-inner" />
-          
-          <div className="h-5 mb-3 w-full text-[#8C0902] text-xs font-bold animate-pulse">{errorMsg}</div>
-          <button onClick={handleJoinRoom} className="w-full bg-[#B14A36] hover:bg-[#8C0902] text-white font-bold py-4 rounded-2xl transition-all active:scale-[0.98] shadow-md">เข้าร่วมห้อง (Join)</button>
+        <div className="flex bg-[#FFFDF9] border-2 border-[#FECE79]/50 rounded-xl p-1 shadow-inner mb-6">
+          <button type="button" onClick={() => setMode('create')} className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${mode === 'create' ? 'bg-[#8C0902] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>สร้างห้องใหม่</button>
+          <button type="button" onClick={() => setMode('join')} className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${mode === 'join' ? 'bg-[#8C0902] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>เข้าร่วมห้อง</button>
         </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-black text-[#B14A36] uppercase mb-1.5 ml-1">ชื่อที่ใช้แสดง</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="กรอกชื่อของคุณ" className="w-full bg-[#FFFDF9] border-2 border-[#FECE79] focus:border-[#E6A341] rounded-xl px-4 py-3.5 text-[#210100] font-bold outline-none transition-all shadow-sm text-center" required />
+          </div>
+
+          {mode === 'join' && (
+            <div className="animate-fade-in">
+              <label className="block text-xs font-black text-[#B14A36] uppercase mb-1.5 ml-1">รหัสห้อง (PIN)</label>
+              <input type="text" value={pin} onChange={(e) => setPin(e.target.value)} maxLength="6" placeholder="รหัส 6 หลักจากเพื่อน" className="w-full bg-[#FFFDF9] border-2 border-[#FECE79] focus:border-[#E6A341] rounded-xl px-4 py-3.5 text-[#8C0902] font-black text-2xl tracking-widest outline-none transition-all shadow-sm text-center uppercase" required />
+            </div>
+          )}
+
+          <button type="submit" disabled={isLoading} className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-black py-4 rounded-xl transition-all shadow-md mt-6 flex justify-center items-center gap-2">
+            {isLoading && <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>}
+            {mode === 'create' ? 'ยืนยันการสร้างห้อง' : 'กดเพื่อเข้าร่วม'}
+          </button>
+        </form>
+
       </div>
     </div>
   );

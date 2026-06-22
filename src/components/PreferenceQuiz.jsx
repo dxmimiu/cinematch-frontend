@@ -1,5 +1,43 @@
 import React, { useState } from 'react';
 
+// ✅ เพิ่ม "ดิกชันนารีแปลจิตวิทยาเป็นแนวหนัง" (คำตอบ -> [แนวหนัง, คะแนน])
+const ANSWER_TO_GENRE_MAP = {
+  // Level 1
+  "หาที่เที่ยวไกลๆ หรือลองไปคาเฟ่ ร้านใหม่ๆ": { "ผจญภัย": 3, "โรแมนติก": 1 },
+  "เสพงานศิลป์ ไปนิทรรศการ หรือเดินมิวเซียมเงียบๆ": { "ดราม่าเข้มข้น": 3, "ประวัติศาสตร์": 2 },
+  "นอนตื่นสาย สั่งของกินมากิน ดูคลิปเพลินๆ": { "ตลกขบขัน": 3, "แอนิเมชัน": 2 },
+  "นั่งหน้าคอม เล่นเกมจำลองชีวิต ทำกิจกรรมคราฟต์เพลินๆ": { "ไซไฟอวกาศ": 2, "แฟนตาซีเวทมนตร์": 3 },
+  
+  // Level 2 Active
+  "เปลี่ยนแผน ดันสดหาที่ไปแถวนั้นแทน": { "แอคชั่นบู้ล้างผลาญ": 3, "ผจญภัย": 2 },
+  "หาที่นั่งหลบ เช็กแผนที่ประเมินสถานการณ์ก่อน": { "ลึกลับซ่อนเงื่อน": 2, "ไซไฟอวกาศ": 2 },
+  "ช่างมัน! หาร้านของหวานอร่อยๆ นั่งกินรอฝนซา": { "ตลกขบขัน": 2, "ครอบครัว": 2 },
+  "นั่งมองฝนตก ถ่ายสตอรี่ใส่เพลงเศร้าๆ อินกับบรรยากาศ": { "ดราม่าเข้มข้น": 3, "โรแมนติก": 2 },
+
+  // Level 2 Passive
+  "คลิปเรื่องลี้ลับ ทฤษฎีสมคบคิด เทคโนโลยี": { "ไซไฟอวกาศ": 3, "ลึกลับซ่อนเงื่อน": 3 },
+  "Vlog ชีวิตคนอื่น รีวิวของ เล่าเรื่องดราม่า": { "สารคดี": 2, "ทีวีมูฟวี่": 2 },
+  "คลิปเล่าคดีฆาตกรรมปริศนา หรือเรื่องผีสยองขวัญ": { "อาชญากรรม": 3, "สยองขวัญ": 3 },
+  "คลิปหมาแมว สัตว์โลกน่ารัก หรือคลิปแกล้งคนตลกๆ": { "ตลกขบขัน": 3, "แอนิเมชัน": 2 },
+
+  // Level 3
+  "ถามหาต้นเหตุ แล้วช่วยหาวิธีแก้ทีละสเตป": { "ลึกลับซ่อนเงื่อน": 2, "สารคดี": 1 },
+  "รับฟังเงียบๆ ปล่อยให้เพื่อนได้ระบายเต็มที่": { "ดราม่าเข้มข้น": 2, "ครอบครัว": 1 },
+  "ชวนคุยเรื่องตลกๆ หรือหาไปหาอะไรกินให้ลืม": { "ตลกขบขัน": 3 },
+  "ตั้งสติ แชร์มุมมองความเป็นจริงที่โหดร้ายแต่ต้องยอมรับ": { "ระทึกขวัญตื่นเต้น": 2, "อาชญากรรม": 1 },
+
+  // Level 4
+  "ฮึดทำทีเดียวให้เสร็จไปเลย เหนื่อยแต่จบไว": { "แอคชั่นบู้ล้างผลาญ": 3 },
+  "ทยอยทำทีละโซน ทำๆ พักๆ ค่อยเป็นค่อยไป": { "แฟนตาซีเวทมนตร์": 2, "ครอบครัว": 1 },
+  "ทำแป๊บเดียวเบื่อ ขอไปหาอะไรสั้นๆ ดูก่อนแล้วค่อยกลับมาทำ": { "ตลกขบขัน": 2, "แอนิเมชัน": 1 },
+
+  // Level 5
+  "ได้ข้อสรุปชัดเจน เคลียร์ทุกประเด็นที่สงสัย": { "ลึกลับซ่อนเงื่อน": 3, "อาชญากรรม": 2 },
+  "เป็นหัวข้อปลายเปิด ทิ้งให้เอาไปคิดต่อสนุกๆ": { "ไซไฟอวกาศ": 2, "แฟนตาซีเวทมนตร์": 2 },
+  "ได้แชร์ประสบการณ์ตรง ยอมรับความจริงของชีวิต": { "ดราม่าเข้มข้น": 3, "สารคดี": 2 },
+  "หักมุมช็อตฟีล คดีพลิกแบบที่ไม่มีใครเดาทางถูก": { "ระทึกขวัญตื่นเต้น": 3, "สยองขวัญ": 2 }
+};
+
 export default function PreferenceQuiz({ onComplete }) {
   const questionsData = {
     level1: {
@@ -81,6 +119,26 @@ export default function PreferenceQuiz({ onComplete }) {
     if (currentStep === 5) return questionsData.level5;
   };
 
+  // ✅ ฟังก์ชันแปลคำตอบจิตวิทยา ให้เป็นคะแนนแนวหนัง (Machine Learning Base)
+  const processAndSavePreferences = (answers) => {
+    let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+    if (!prefs.genreWeights) prefs.genreWeights = {};
+
+    // วนลูปคำตอบทั้ง 5 ข้อ
+    Object.values(answers).forEach(answerText => {
+      const genresToBoost = ANSWER_TO_GENRE_MAP[answerText];
+      if (genresToBoost) {
+        // บวกคะแนนให้แต่ละหมวดหมู่ตามดิกชันนารี
+        Object.entries(genresToBoost).forEach(([genre, score]) => {
+          prefs.genreWeights[genre] = (prefs.genreWeights[genre] || 0) + score;
+        });
+      }
+    });
+
+    // บันทึกลงสมองกล (Local Storage)
+    localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
+  };
+
   const handleOptionClick = (optionText) => {
     const newAnswers = { ...selectedAnswers, [currentStep]: optionText };
     setSelectedAnswers(newAnswers);
@@ -89,6 +147,8 @@ export default function PreferenceQuiz({ onComplete }) {
       if (currentStep < 5) {
         setCurrentStep(prev => prev + 1);
       } else {
+        // ✅ ทำแบบทดสอบเสร็จ -> แปลผลเป็นแนวหนังเซฟลงเครื่อง -> ค่อยพาไปหน้าต่อไป
+        processAndSavePreferences(newAnswers);
         onComplete(newAnswers);
       }
     }, 300);
@@ -147,6 +207,7 @@ export default function PreferenceQuiz({ onComplete }) {
                     ${isSelected 
                       ? 'border-[#E6A341] bg-[#FECE79]/30 text-[#210100] scale-[0.98] shadow-inner' 
                       : 'border-gray-100 bg-white text-[#210100] hover:border-[#E6A341] hover:bg-[#FFFDF9] hover:shadow-[0_4px_20px_rgba(230,163,65,0.15)] hover:-translate-y-1'}
+                    
                     ${currentStep === 4 && index === 2 ? 'md:col-span-2' : ''}
                   `}
                 >

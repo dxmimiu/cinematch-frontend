@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Toaster } from 'react-hot-toast';
+
+import { Toaster } from 'react-hot-toast'; 
+
 import Navbar from './components/Navbar';
 import PreferenceQuiz from './components/PreferenceQuiz'; 
 import ThisOrThat from './components/ThisOrThat';
@@ -13,7 +15,7 @@ import Auth from './components/Auth';
 import Collection from './components/Collection';
 
 export default function App() {
-  const [step, setStep] = useState(-2); // -2 คือสถานะกำลังโหลดตรวจสอบ Token
+  const [step, setStep] = useState(-2); 
   const [currentUser, setCurrentUser] = useState(null);
 
   const [userPreferences, setUserPreferences] = useState(null);
@@ -21,23 +23,23 @@ export default function App() {
   const [roomRole, setRoomRole] = useState(""); 
   const [roomPin, setRoomPin] = useState("");   
 
-  // ฟังก์ชันช่วยจัดเส้นทางหลังจากตรวจสอบสิทธิ์ล็อกอินสำเร็จ
   const routeUserFlow = (user) => {
-    if (user.has_completed_quiz === 0) {
-      setStep(0); // [ข้อ 3] บัญชีใหม่พึ่ง Register/เข้าครั้งแรก -> บังคับทำควิซความชอบตั้งค่าเริ่มต้น
+    // ปรับให้รองรับกรณีที่คอลัมน์ has_completed_quiz อาจจะเป็น undefined
+    if (user.has_completed_quiz === 0 || user.has_completed_quiz === undefined) {
+      setStep(0); 
     } else {
-      setStep(0.5); // [ข้อ 4] ผู้ใช้เก่าที่ทำควิซแล้ว -> บังคับข้ามไปเล่นหน้า This or That เสมอ
+      setStep(0.5); 
     }
   };
 
   useEffect(() => {
     const token = localStorage.getItem('cinematch_token');
     if (!token) {
-      setStep(-1); // ไม่มีบัญชี/ยังไม่ได้ล็อกอิน -> ไปหน้าล็อกอิน/สมัครสมาชิก
+      setStep(-1); 
       return;
     }
 
-    axios.get('http://localhost:5000/api/verify', {
+    axios.get('http://172.20.10.2:5000/api/verify', {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => {
@@ -50,9 +52,17 @@ export default function App() {
     });
   }, []);
 
-  const handleLoginSuccess = (user) => {
+  // ✅ แก้ไข: รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
+  const handleLoginSuccess = (user, authType) => {
     setCurrentUser(user);
-    routeUserFlow(user);
+    
+    if (authType === 'register') {
+      // ถ้าเป็นการสมัครสมาชิกใหม่ บังคับให้ไปหน้า Preference Quiz (step 0) เสมอ
+      setStep(0);
+    } else {
+      // ถ้าเป็นการล็อกอินปกติ ให้เช็กประวัติการทำควิซ
+      routeUserFlow(user);
+    }
   };
 
   const handleLogout = () => {
@@ -61,19 +71,19 @@ export default function App() {
     setStep(-1); 
   };
 
-  // ฟังก์ชันเมื่อทำควิซแรกเข้าเสร็จสิ้น
   const handleQuizComplete = (answers) => {
     setUserPreferences(answers);
     const token = localStorage.getItem('cinematch_token');
     
-    // ยิงบอกหลังบ้านว่าคนนี้ทำควิซแล้ว คราวหลังไม่ต้องโชว์หน้านี้อีก
-    axios.post('http://localhost:5000/api/users/complete-quiz', {}, {
+    // พยายามบันทึกสถานะลงหลังบ้าน
+    axios.post('http://172.20.10.2:5000/api/users/complete-quiz', {}, {
       headers: { Authorization: `Bearer ${token}` }
     })
-    .then(() => {
-      setStep(0.5); // บังคับส่งต่อไปหน้า This or That ต่อทันทีก่อนเข้าหน้าหลัก
-    })
-    .catch(err => console.error(err));
+    .finally(() => {
+      // ✅ แก้ไข: ใช้ finally เพื่อให้ระบบพาวาร์ปไปหน้า This or That (0.5) ทันที
+      // แม้ว่า Backend จะยังไม่มี API /complete-quiz ก็ตาม (กันพรีเซนต์หน้าขาว)
+      setStep(0.5); 
+    });
   };
 
   if (step === -2) return <div className="min-h-screen bg-[#FFFDF9] flex justify-center items-center"><div className="w-10 h-10 border-4 border-[#8C0902] border-t-transparent rounded-full animate-spin"></div></div>;
@@ -104,6 +114,8 @@ export default function App() {
             onLeave={() => setStep(1)} 
           />
         )}
+        
+        {step === 3 && <Result onLeave={() => setStep(1)} />}
       
         {step === 4 && <MovieSearch currentUser={currentUser} />}
         {step === 5 && <Home setStep={setStep} currentUser={currentUser} />}

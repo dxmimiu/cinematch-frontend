@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
+// ตั้งค่าเริ่มต้นสำหรับการทำงานของ Vite ซึ่งเป็นเครื่องมือจำลองเซิร์ฟเวอร์และคอมไพล์โค้ดหน้าบ้าน
 export default defineConfig({
+  // เรียกใช้งานปลั๊กอิน React เพื่อให้ระบบ Vite สามารถอ่านและประมวลผลไวยากรณ์ JSX ได้อย่างถูกต้อง
   plugins: [react()],
+  // หากต้องการตั้งค่าเซิร์ฟเวอร์เพิ่มเติม เช่น การบังคับพอร์ต หรือการตั้งค่า Host สามารถเพิ่มบล็อก server: { ... } ในส่วนนี้ได้
 })

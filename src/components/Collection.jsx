@@ -8,44 +8,64 @@ export default function Collection() {
   const [activeTab, setActiveTab] = useState('like');
   const [isLoading, setIsLoading] = useState(true);
 
-  // สถานะควบคุมการเปิดโครงสร้างแสดงผลรายละเอียดภาพยนตร์ (Modal Popup)
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [detailedMovie, setDetailedMovie] = useState(null);
 
-  // ฟังก์ชันดึงรายละเอียดโครงสร้างการ์ดจากฐานข้อมูล TMDB ย้อนหลัง
-  const fetchTmdbData = async (items) => {
+const fetchTmdbData = async (items) => {
+    if (!items || items.length === 0) return [];
+    
     const API_KEY = "181edc5801db6678de6ccb2864149a6a";
     const promises = items.map(async (item) => {
       try {
-        let res = await fetch(`https://api.themoviedb.org/3/movie/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
-        let data = await res.json();
-        let mediaType = 'movie';
+        // 1. ลองดึงแบบ Movie ก่อน
+        let movieRes = await fetch(`https://api.themoviedb.org/3/movie/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
+        let movieData = await movieRes.json();
         
-        if (data.success === false) { 
-          res = await fetch(`https://api.themoviedb.org/3/tv/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
-          data = await res.json();
-          mediaType = 'tv';
+        // ตรวจสอบว่าได้ข้อมูลหนังที่ถูกต้องจริงๆ (ต้องมี title หรือ poster_path และไม่มี error)
+        if (movieData && movieData.title && movieData.success !== false) {
+          return { ...movieData, film_id: item.film_id, media_type: 'movie' };
         }
         
-        // หากระบบตรวจสอบแล้วพบว่าไม่พบข้อมูลทั้งสองตาราง ให้ทำการตีกลับค่าว่างเพื่อป้องกันการ์ดพัง
-        if (data.success === false) return null; 
+        // 2. ถ้าไม่ใช่หนัง หรือดึงแล้วไม่มีชื่อเรื่อง ให้เปลี่ยนไปดึงแบบ TV Series ทันที
+        let tvRes = await fetch(`https://api.themoviedb.org/3/tv/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
+        let tvData = await tvRes.json();
         
-        return { ...data, film_id: item.film_id, media_type: mediaType };
+        if (tvData && tvData.name && tvData.success !== false) {
+          return { ...tvData, film_id: item.film_id, media_type: 'tv' };
+        }
+        
+        return null; 
       } catch (e) {
+        console.error("Error fetching TMDB item details:", e);
         return null;
       }
     });
+    
     const results = await Promise.all(promises);
-    return results.filter(i => i !== null); // กรองคัดเลือกเฉพาะแถวข้อมูลที่เรียกใช้งานได้จริง
+    return results.filter(i => i !== null); 
   };
 
   const loadData = async () => {
     setIsLoading(true);
     const token = localStorage.getItem('cinematch_token');
     try {
-      const res = await axios.get('http://localhost:5000/api/likes', { headers: { Authorization: `Bearer ${token}` } });
-      const likedWithDetails = await fetchTmdbData(res.data.liked);
-      const dislikedWithDetails = await fetchTmdbData(res.data.disliked);
+      const res = await axios.get('http://172.20.10.2:5000/api/likes', { headers: { Authorization: `Bearer ${token}` } });
+      
+      // ✅ แก้ไข: ข้อมูลที่ได้มาคือ Array ก้อนเดียว เราต้องแยกกรองเองว่าอันไหน Like อันไหน Dislike
+      const allLikes = res.data || [];
+      
+      // คัดแยกและแปลงฟิลด์ movie_id ให้กลายเป็น film_id เพื่อให้ตรงกับโครงสร้างเก่า
+      const likedList = allLikes
+        .filter(item => item.action === 'like')
+        .map(item => ({ film_id: item.movie_id }));
+        
+      const dislikedList = allLikes
+        .filter(item => item.action === 'dislike')
+        .map(item => ({ film_id: item.movie_id }));
+      
+      const likedWithDetails = await fetchTmdbData(likedList);
+      const dislikedWithDetails = await fetchTmdbData(dislikedList);
+      
       setLikedMovies(likedWithDetails);
       setDislikedMovies(dislikedWithDetails);
     } catch (err) {
@@ -60,11 +80,18 @@ export default function Collection() {
   const removeMovie = async (film_id) => {
     const token = localStorage.getItem('cinematch_token');
     try {
-      await axios.delete(`http://localhost:5000/api/likes/${film_id}`, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success('ยกเลิกรายการนี้แล้ว');
+      // ✅ แก้ไข: อิงตาม route จริง ถ้าจะยกเลิก เราต้องส่งค่า action เป็นการเคลียร์หรือลบทิ้ง
+      // ใน server.js ที่ให้ไป ตอนนี้รองรับการ INSERT OR REPLACE 
+      // เพื่อความง่าย เราใช้การยิง 'dislike' ทับ หรือคุณอาจจะต้องเพิ่ม endpoint ลบ 
+      // แต่เบื้องต้น ผมจะปรับให้มันยิง 'remove' เพื่อเปลี่ยนสถานะ
+      await axios.post('http://172.20.10.2:5000/api/likes', 
+        { movie_id: film_id, action: 'remove' }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('นำออกจากรายการแล้ว');
       loadData(); 
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'ลบไม่สำเร็จ');
+      toast.error('ลบไม่สำเร็จ');
     }
   };
 
@@ -188,8 +215,8 @@ export default function Collection() {
       <h1 className="text-3xl font-black text-[#8C0902] mb-6">คอลเลกชันของคุณ</h1>
       
       <div className="flex bg-[#FFFDF9] border border-[#FECE79] rounded-xl p-1 shadow-inner mb-8 max-w-sm">
-        <button onClick={() => setActiveTab('like')} className={`flex-1 py-2.5 rounded-lg text-sm font-extrabold transition-all ${activeTab === 'like' ? 'bg-[#8C0902] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>❤️ รายการโปรด ({likedMovies.length})</button>
-        <button onClick={() => setActiveTab('dislike')} className={`flex-1 py-2.5 rounded-lg text-sm font-extrabold transition-all ${activeTab === 'dislike' ? 'bg-[#210100] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>👎 ซ่อนไว้ ({dislikedMovies.length})</button>
+        <button onClick={() => setActiveTab('like')} className={`flex-1 py-2.5 rounded-lg text-sm font-extrabold transition-all ${activeTab === 'like' ? 'bg-[#8C0902] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>รายการโปรด ({likedMovies.length})</button>
+        <button onClick={() => setActiveTab('dislike')} className={`flex-1 py-2.5 rounded-lg text-sm font-extrabold transition-all ${activeTab === 'dislike' ? 'bg-[#210100] text-white shadow-md' : 'text-[#B14A36] hover:bg-[#FECE79]/30'}`}>ไม่ชอบ ({dislikedMovies.length})</button>
       </div>
 
       {isLoading ? (
@@ -204,7 +231,6 @@ export default function Collection() {
         </div>
       )}
 
-      {/* โครงสร้างแสดงผลรายละเอียดภาพยนตร์ตัวเต็ม (Modal) */}
       {selectedMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-[#210100]/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[95vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">
