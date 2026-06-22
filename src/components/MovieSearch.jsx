@@ -2,7 +2,6 @@ import toast from 'react-hot-toast';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// ✅ เพิ่ม GENRE_MAP สำหรับแปลรหัสหมวดหมู่ไปสอน AI
 const GENRE_MAP = {
   28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
   99: "สารคดี", 18: "ดราม่าเข้มข้น", 10751: "ครอบครัว", 14: "แฟนตาซีเวทมนตร์", 36: "ประวัติศาสตร์",
@@ -16,14 +15,12 @@ export default function MovieSearch({ currentUser }) {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // ✅ เพิ่ม State สำหรับจัดการสถานะปุ่ม Like / Dislike ให้เหมือนหน้า Result
   const [likedMovies, setLikedMovies] = useState([]);
   const [dislikedMovies, setDislikedMovies] = useState([]);
 
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [detailedMovie, setDetailedMovie] = useState(null);
 
-  // ✅ ดึงข้อมูลโหวตล่าสุดเมื่อเปิดหน้านี้ขึ้นมา
   useEffect(() => {
     const fetchLikes = async () => {
       const token = localStorage.getItem('cinematch_token');
@@ -41,9 +38,8 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
-  // ✅ อัปเกรดฟังก์ชันโหวตให้มี AI Learning และส่งข้อมูลหน้าปกครบถ้วน
   const handleVote = async (e, movie, type) => {
-    e.stopPropagation(); // กันไม่ให้กดปุ่มแล้วเด้งเปิดหน้าต่างรายละเอียด
+    e.stopPropagation(); 
     const token = localStorage.getItem('cinematch_token');
     if (!token) {
       toast.error('กรุณาล็อกอินก่อนบันทึกความชอบ');
@@ -57,14 +53,13 @@ export default function MovieSearch({ currentUser }) {
     const isCurrentlyLiked = likedMovies.some(m => m.film_id === filmId || m.id === filmId);
     const isCurrentlyDisliked = dislikedMovies.some(m => m.film_id === filmId || m.id === filmId);
 
-    // --- ส่วนที่ 1: Machine Learning ---
     const isAddingVote = (type === 'like' && !isCurrentlyLiked) || (type === 'dislike' && !isCurrentlyDisliked);
     const isRemovingVote = (type === 'like' && isCurrentlyLiked) || (type === 'dislike' && isCurrentlyDisliked);
 
-    if (movie.genre_ids) {
-      let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
-      if (!prefs.genreWeights) prefs.genreWeights = {};
+    let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+    if (!prefs.genreWeights) prefs.genreWeights = {};
 
+    if (movie.genre_ids) {
       movie.genre_ids.forEach(id => {
         const genreName = GENRE_MAP[id];
         if (genreName) {
@@ -80,7 +75,12 @@ export default function MovieSearch({ currentUser }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // --- ส่วนที่ 2: บันทึกลงฐานข้อมูล ---
+    // ✅ ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud ด้วย
+    axios.post('http://172.20.10.2:5000/api/preferences', 
+      { genreWeights: prefs.genreWeights },
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).catch(err => console.error("Pref Sync Error:", err));
+
     try {
       if (type === 'like') {
         if (isCurrentlyLiked) {
@@ -88,8 +88,17 @@ export default function MovieSearch({ currentUser }) {
           setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
+          // ✅ ส่งข้อมูลพร้อมคะแนน
           await axios.post('http://172.20.10.2:5000/api/likes', 
-            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'like' },
+            { 
+              film_id: filmId, 
+              film_title: filmTitle, 
+              poster_path: posterPath, 
+              type: 'like',
+              media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
+              genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
+              points: 2 // แนบคะแนน 
+            },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setLikedMovies([...likedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -102,8 +111,17 @@ export default function MovieSearch({ currentUser }) {
           setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
+          // ✅ ส่งข้อมูลพร้อมคะแนนเป็น 0
           await axios.post('http://172.20.10.2:5000/api/likes', 
-            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'dislike' },
+            { 
+              film_id: filmId, 
+              film_title: filmTitle, 
+              poster_path: posterPath, 
+              type: 'dislike',
+              media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
+              genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
+              points: 0 // แนบคะแนน
+            },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setDislikedMovies([...dislikedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -163,7 +181,6 @@ export default function MovieSearch({ currentUser }) {
       const castArray = thData.credits?.cast?.slice(0, 8) || [];
       const genres = thData.genres?.map(g => g.name).join(', ') || 'ไม่ระบุ';
 
-      // ✅ แก้ไขปัญหาการอ่านค่า Providers ให้ถูกต้อง
       const allProviders = thData['watch/providers']?.results || {};
       const mergedProviders = { flatrate: [], rent: [], buy: [] };
       const seenIds = new Set();
@@ -254,7 +271,6 @@ export default function MovieSearch({ currentUser }) {
                           ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
                         </div>
                         <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
-                          {/* ✅ อัปเดตสีปุ่มให้ตอบสนองเหมือนหน้า Result */}
                           <button 
                             onClick={(e) => handleVote(e, item, 'dislike')} 
                             className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
@@ -337,7 +353,6 @@ export default function MovieSearch({ currentUser }) {
               <img src={`https://image.tmdb.org/t/p/w500${selectedMovie.poster_path}`} alt={selectedMovie.title || selectedMovie.name} className="w-full h-full object-cover" />
             </div>
             
-            {/* โซนขวา แก้ให้ Scroll ไหลลื่นชิ้นเดียวกัน */}
             <div className="w-full md:w-[65%] p-6 md:p-8 flex flex-col overflow-y-auto custom-scrollbar">
               <div className="mb-4">
                 <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">{selectedMovie.media_type === 'tv' ? 'TV Series' : 'Movie'}</span>
@@ -391,7 +406,6 @@ export default function MovieSearch({ currentUser }) {
                           <span className="text-[10px] font-bold text-[#210100]">โรงภาพยนตร์</span>
                         </div>
                       )}
-                      {/* ✅ แก้ไขการเรนเดอร์ช่องทางสตรีมมิ่งจาก forEach เป็น map */}
                       {(detailedMovie.providers.flatrate.length > 0 || detailedMovie.providers.rent.length > 0 || detailedMovie.providers.buy.length > 0) ? (
                         ['flatrate', 'rent', 'buy'].map(type => 
                           detailedMovie.providers[type].map(provider => (

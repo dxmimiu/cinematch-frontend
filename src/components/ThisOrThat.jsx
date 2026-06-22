@@ -21,12 +21,23 @@ export default function ThisOrThat({ onComplete }) {
         const API_KEY = "181edc5801db6678de6ccb2864149a6a";
         const randomPage = Math.floor(Math.random() * 5) + 1;
         
-        const res = await fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=popularity.desc&page=${randomPage}`);
-        const data = await res.json();
+        // 🟢 แก้ไข: ดึงข้อมูลทีเดียว 2 หน้า เพื่อกวาดหนังมาเผื่อกรอง (รวม 40 เรื่อง)
+        const [res1, res2] = await Promise.all([
+          fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=popularity.desc&page=${randomPage}`),
+          fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=popularity.desc&page=${randomPage + 1}`)
+        ]);
         
-        const validMovies = data.results.filter(m => m.poster_path && m.overview);
+        const data1 = await res1.json();
+        const data2 = await res2.json();
+        
+        // รวมข้อมูลจากทั้ง 2 หน้าเข้าด้วยกัน
+        const allMovies = [...(data1.results || []), ...(data2.results || [])];
+        
+        // กรองเอาเฉพาะเรื่องที่มีรูปปกและเรื่องย่อภาษาไทย
+        const validMovies = allMovies.filter(m => m.poster_path && m.overview);
         
         const pairs = [];
+        // วนลูปจับคู่ให้ครบ 7 คู่
         for (let i = 0; i < 7; i++) {
           if (validMovies.length >= 2) {
             const m1 = validMovies.splice(Math.floor(Math.random() * validMovies.length), 1)[0];
@@ -49,7 +60,6 @@ export default function ThisOrThat({ onComplete }) {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          // ถ้าหมดเวลาให้บังคับเลือกฝั่งซ้าย
           handleSelect(moviePairs[currentIndex].left); 
           return 15;
         }
@@ -63,12 +73,41 @@ export default function ThisOrThat({ onComplete }) {
     setTimeLeft(15); 
     
     const token = localStorage.getItem('cinematch_token');
+
+    // 🟢 1. อัปเดตค่าน้ำหนักความชอบ (Genre Weights) ลง LocalStorage และส่งขึ้น Cloud (ตาราง user_preferences)
+    if (selectedMovie.genre_ids) {
+      let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+      if (!prefs.genreWeights) prefs.genreWeights = {};
+
+      selectedMovie.genre_ids.forEach(id => {
+        const genreName = GENRE_MAP[id];
+        if (genreName) {
+          // ให้ 3 คะแนนสำหรับหนังที่ชนะในเกม This or That
+          prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 3; 
+        }
+      });
+      
+      localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
+
+      // ยิง API ซิงค์คะแนนขึ้น Supabase
+      axios.post('http://172.20.10.2:5000/api/preferences', 
+        { genreWeights: prefs.genreWeights },
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).catch(err => console.error("Pref Sync Error:", err));
+    }
+
+    // 🟢 2. บันทึกประวัติการเลือกหนังลงตาราง user_likes
     try {
-      // ✅ จุดที่แก้ไข: เปลี่ยน action จาก 'like' เป็น 'this_or_that_choice'
-      // ข้อมูลนี้จะถูกเก็บลงตาราง user_likes เพื่อให้ระบบประมวลผลเอาไปคำนวณต่อ
-      // แต่มันจะไม่ไปโผล่ในหน้า Collection เพราะไม่ใช่ 'like'
       await axios.post('http://172.20.10.2:5000/api/likes', 
-        { movie_id: selectedMovie.id, action: 'this_or_that_choice' },
+        { 
+          movie_id: selectedMovie.id, 
+          action: 'this_or_that_choice',
+          media_type: 'movie',
+          movie_title: selectedMovie.title,
+          poster_path: selectedMovie.poster_path,
+          genres: selectedMovie.genre_ids ? selectedMovie.genre_ids.join(',') : '',
+          points: 3
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (err) {

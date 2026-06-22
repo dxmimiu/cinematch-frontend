@@ -9,22 +9,17 @@ const GENRE_MAP = {
   10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
 };
 
-// แปลงกลับจากชื่อแนวหนัง -> genre id
 const REVERSE_GENRE_MAP = Object.fromEntries(
   Object.entries(GENRE_MAP).map(([id, name]) => [name, Number(id)])
 );
 
 const TMDB_API_KEY = "181edc5801db6678de6ccb2864149a6a";
 
-/* ------------------------------------------------------------
-   ✅ DATA INTEGRATION
------------------------------------------------------------- */
 const getCombinedGenreWeights = () => {
   const myPrefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
   const myWeights = myPrefs.genreWeights || {};
 
   const roomData = JSON.parse(localStorage.getItem('cinematch_room') || '{}');
-  // ปรับ path ด้านล่างให้ตรงกับที่คุณเก็บ partner weights
   const partnerWeights = roomData.partnerPreferences?.genreWeights || {};
 
   const combined = {};
@@ -37,9 +32,6 @@ const getCombinedGenreWeights = () => {
   return combined;
 };
 
-/* ------------------------------------------------------------
-   ✅ Fallback แบบ Personalized (แก้บั๊ก AND เป็น OR แล้ว)
------------------------------------------------------------- */
 const getPersonalizedFallback = async (seenIds) => {
   const combinedWeights = getCombinedGenreWeights();
 
@@ -47,9 +39,8 @@ const getPersonalizedFallback = async (seenIds) => {
     .sort((a, b) => b[1] - a[1])
     .map(([name]) => REVERSE_GENRE_MAP[name])
     .filter(Boolean)
-    .slice(0, 3); // ปรับเหลือ 3 อันดับแรก เพื่อตีกรอบให้แม่นยำ
+    .slice(0, 3); 
 
-  // ผู้ใช้ใหม่ที่ยังไม่มีข้อมูลความชอบเลย
   if (topGenreIds.length === 0) {
     const randomPage = Math.floor(Math.random() * 5) + 1;
     const res = await fetch(
@@ -59,9 +50,8 @@ const getPersonalizedFallback = async (seenIds) => {
     return (data.results || []).map((m, idx) => ({ ...m, matchPercent: 90 - idx }));
   }
 
-  // ใช้ | (OR) แทน , (AND) เพื่อหาหนังที่มีแนวใดแนวหนึ่งในท็อป 3
   const genreParam = topGenreIds.join('|'); 
-  const pages = [1, 2, 3]; // ดึง 3 หน้าให้คลังข้อมูลใหญ่ขึ้น
+  const pages = [1, 2, 3]; 
   const requests = pages.map((page) =>
     fetch(
       `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=th-TH` +
@@ -72,7 +62,6 @@ const getPersonalizedFallback = async (seenIds) => {
   const results = await Promise.all(requests);
   const candidates = results.flatMap((r) => r.results || []);
 
-  // ตัดเรื่องที่เคยกด Like/Dislike ไปแล้วออก + เอาเฉพาะเรื่องที่มีภาพปกครบ
   const unique = new Map();
   candidates.forEach((m) => {
     if (!seenIds.has(m.id) && !unique.has(m.id) && m.poster_path && m.backdrop_path) {
@@ -80,7 +69,6 @@ const getPersonalizedFallback = async (seenIds) => {
     }
   });
 
-  // คำนวณคะแนนดิบ
   const scored = [...unique.values()].map((m) => {
     const genreScore = (m.genre_ids || []).reduce((sum, gid) => {
       const name = GENRE_MAP[gid];
@@ -93,7 +81,6 @@ const getPersonalizedFallback = async (seenIds) => {
   scored.sort((a, b) => b.rawScore - a.rawScore);
   const maxScore = scored[0]?.rawScore || 1;
 
-  // บัญญัติไตรยางค์ล็อกอันดับ 1 ไว้ที่ 98%
   return scored.map((m, index) => {
     let percent = 98;
     if (index > 0 && m.rawScore > 0) {
@@ -108,7 +95,6 @@ export default function Result({ onLeave }) {
   const [movies, setMovies] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ State สำหรับจัดการ Like / Dislike
   const [likedMovies, setLikedMovies] = useState([]);
   const [dislikedMovies, setDislikedMovies] = useState([]);
 
@@ -117,7 +103,6 @@ export default function Result({ onLeave }) {
   const recSmallScrollRef = useRef(null);
 
   useEffect(() => {
-    // ดึงสถานะ Like/Dislike ปัจจุบันก่อน เพื่อเอา id ไปกันแนะนำซ้ำตอนทำ fallback
     const loadUserVotes = async () => {
       const token = localStorage.getItem('cinematch_token');
       if (!token) return { likedIds: [], dislikedIds: [] };
@@ -144,28 +129,20 @@ export default function Result({ onLeave }) {
         let dataToUse = [];
 
         try {
-          // 1. ดึงผลลัพธ์ที่คำนวณเสร็จแล้วจาก RoomSync โดยตรง
           const savedResults = localStorage.getItem('cinematch_duo_results');
-
           if (savedResults && savedResults !== "undefined") {
             dataToUse = JSON.parse(savedResults);
           } else {
-            // 2. กรณีฉุกเฉิน: ยิงถามเซิร์ฟเวอร์
             const roomData = JSON.parse(localStorage.getItem('cinematch_room') || '{}');
             const pin = roomData.pin || '00000';
             const token = localStorage.getItem('cinematch_token');
-
             const res = await axios.get(`http://172.20.10.2:5000/api/rooms/status/${pin}`, {
               headers: { Authorization: `Bearer ${token}` }
             });
-
             dataToUse = res.data?.results || [];
           }
-
           if (!Array.isArray(dataToUse) || dataToUse.length === 0) throw new Error("Empty Array");
-
         } catch (backendErr) {
-          // 3. Fallback: เน็ตพังหรือเซิร์ฟเวอร์ไม่ตอบ -> ทำ Data Integration ฝั่ง client เอง
           dataToUse = await getPersonalizedFallback(seenIds);
         }
 
@@ -175,7 +152,6 @@ export default function Result({ onLeave }) {
           .map((item, index) => ({
             ...item,
             rank: index + 1,
-            // ใช้ matchPercent ที่คำนวณจริงก่อนเสมอ ถ้าไม่มีค่อย fallback เป็นค่าลดหลั่น
             matchPercent: item.matchPercent ?? (98 - index)
           }));
 
@@ -196,7 +172,6 @@ export default function Result({ onLeave }) {
     init();
   }, []);
 
-  // ✅ อัปเดตฟังก์ชัน handleLikeDislike (เรียนรู้และคืนคะแนนเวลากดยกเลิกโหวต)
   const handleLikeDislike = async (e, item, type) => {
     e.stopPropagation();
     const token = localStorage.getItem('cinematch_token');
@@ -212,7 +187,6 @@ export default function Result({ onLeave }) {
     const isCurrentlyLiked = likedMovies.some(m => m.film_id === filmId || m.id === filmId);
     const isCurrentlyDisliked = dislikedMovies.some(m => m.film_id === filmId || m.id === filmId);
 
-    // --- ✅ ส่วนที่ 1: Machine Learning (อัปเดตน้ำหนักความชอบลง Local Storage ทันที) ---
     const isAddingVote = (type === 'like' && !isCurrentlyLiked) || (type === 'dislike' && !isCurrentlyDisliked);
     const isRemovingVote = (type === 'like' && isCurrentlyLiked) || (type === 'dislike' && isCurrentlyDisliked);
     
@@ -227,7 +201,6 @@ export default function Result({ onLeave }) {
             if (type === 'like') prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
             else if (type === 'dislike') prefs.genreWeights[genreName] = Math.max(0, (prefs.genreWeights[genreName] || 0) - 2);
           } else if (isRemovingVote) {
-            // ถ้ายกเลิกโหวต ให้ลบคะแนนกลับคืนความยุติธรรม
             if (type === 'like') prefs.genreWeights[genreName] = Math.max(0, (prefs.genreWeights[genreName] || 0) - 2);
             else if (type === 'dislike') prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
           }
@@ -237,7 +210,12 @@ export default function Result({ onLeave }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // --- ✅ ส่วนที่ 2: บันทึกลง Database และจัดการปุ่มสลับสี (UI) ---
+    // ✅ ยิง API ซิงค์คะแนนขึ้น Cloud ด้วย
+    axios.post('http://172.20.10.2:5000/api/preferences', 
+      { genreWeights: JSON.parse(localStorage.getItem('cinematch_preferences')).genreWeights },
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).catch(err => console.error("Pref Sync Error:", err));
+
     try {
       if (type === 'like') {
         if (isCurrentlyLiked) {
@@ -245,8 +223,17 @@ export default function Result({ onLeave }) {
           setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
+          // ✅ แนบคะแนนและข้อมูลพื้นฐานครบถ้วน
           await axios.post('http://172.20.10.2:5000/api/likes', 
-            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'like' },
+            { 
+              film_id: filmId, 
+              film_title: filmTitle, 
+              poster_path: posterPath, 
+              type: 'like',
+              media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+              genres: item.genre_ids ? item.genre_ids.join(',') : '',
+              points: 2 // แนบคะแนน
+            },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setLikedMovies([...likedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -259,8 +246,17 @@ export default function Result({ onLeave }) {
           setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
+          // ✅ แนบคะแนน 0
           await axios.post('http://172.20.10.2:5000/api/likes', 
-            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'dislike' },
+            { 
+              film_id: filmId, 
+              film_title: filmTitle, 
+              poster_path: posterPath, 
+              type: 'dislike',
+              media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+              genres: item.genre_ids ? item.genre_ids.join(',') : '',
+              points: 0 
+            },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setDislikedMovies([...dislikedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -310,7 +306,6 @@ export default function Result({ onLeave }) {
       const castArray = thData.credits?.cast?.slice(0, 8) || [];
       const genres = thData.genres?.map(g => g.name).join(', ') || 'ไม่ระบุ';
 
-      // ✅ แก้ไขปัญหาการดึงช่องทางรับชม
       const allProviders = thData['watch/providers']?.results || {};
       const mergedProviders = { flatrate: [], rent: [], buy: [] };
       const seenIds = new Set();
@@ -413,7 +408,6 @@ export default function Result({ onLeave }) {
       <div className="max-w-7xl w-full">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-12">
           
-          {/* อันดับ 1 */}
           {top1 && (
             <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1] p-1" onClick={() => handleMovieClick(top1)}>
               <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
@@ -461,7 +455,6 @@ export default function Result({ onLeave }) {
             </div>
           )}
 
-          {/* อันดับ 2 และ 3 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
             {[top2, top3].map((movie, idx) => movie && (
               <div key={movie.id} onClick={() => handleMovieClick(movie)} className={`w-full h-full min-h-50 sm:min-h-auto relative group rounded-3xl overflow-hidden shadow-lg border-2 cursor-pointer flex flex-col justify-end p-5 ${idx === 0 ? 'border-[#C0C0C0]' : 'border-[#CD7F32]'}`}>
@@ -505,7 +498,6 @@ export default function Result({ onLeave }) {
           </div>
         </div>
 
-        {/* อันดับ 4-10 */}
         {otherRanks.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">

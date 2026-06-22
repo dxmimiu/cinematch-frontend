@@ -26,49 +26,41 @@ export default function Home({ setStep, currentUser, userPreferences }) {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
 
       try {
-        // ✅ 1. ยิง API ขอข้อมูลแนะนำจาก Backend ของเรา
         const recPromise = axios.post('http://172.20.10.2:5000/api/recommendations', 
           { genreWeights: genreWeights },
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        // ✅ 2. ยิง API ขอข้อมูลหนังฮิตจาก TMDB
         const moviePromise = fetch(`https://api.themoviedb.org/3/trending/movie/week?api_key=${API_KEY}&language=th-TH`);
-        
-        // ✅ 3. ยิง API ขอข้อมูลซีรีส์ฮิตจาก TMDB
         const tvPromise = fetch(`https://api.themoviedb.org/3/trending/tv/week?api_key=${API_KEY}&language=th-TH`);
 
-        // รอให้โหลดเสร็จพร้อมกันทั้ง 3 อย่าง
         const [recRes, movieRes, tvRes] = await Promise.all([recPromise, moviePromise, tvPromise]);
         
-const movieData = await movieRes.json();
+        const movieData = await movieRes.json();
         const tvData = await tvRes.json();
 
-        // ✅ คำนวณเปอร์เซ็นต์แบบบัญญัติไตรยางค์ และเติมเลขอันดับ (rank)
         const recData = recRes.data || [];
-        const topScore = recData[0]?.rawScore || 1; // ดึงคะแนนดิบอันดับ 1 มาเป็นฐาน
+        const topScore = recData[0]?.rawScore || 1; 
         
         const formattedRecs = recData.map((item, index) => {
-          let percent = 98; // ล็อกอันดับ 1 ให้เริ่มที่ 98% เสมอ
+          let percent = 98; 
           
           if (index > 0) {
             if (item.rawScore && topScore > 0) {
-               // บัญญัติไตรยางค์: (คะแนนเรื่องนี้ * 98) / คะแนนอันดับ 1
                percent = Math.floor((item.rawScore * 98) / topScore);
-               if (percent >= 98) percent = 98 - index; // กันกรณีเลขซ้ำ
+               if (percent >= 98) percent = 98 - index; 
             } else {
-               percent = 98 - (index * 2); // สำรองถ้าไม่มีคะแนน
+               percent = 98 - (index * 2); 
             }
           }
           
           return {
             ...item,
-            rank: index + 1, // 👉 สร้างตัวแปร rank ตรงนี้ เพื่อให้แสดงเลขอันดับ 4-10
-            matchPercent: percent // ทับด้วยเปอร์เซ็นต์ที่คำนวณใหม่
+            rank: index + 1, 
+            matchPercent: percent 
           };
         });
 
-        // อัปเดตข้อมูลใส่ State
         setRecommended(formattedRecs);
         setTrendingMovies(movieData.results || []);
         setTrendingTVs(tvData.results || []);
@@ -83,14 +75,16 @@ const movieData = await movieRes.json();
     fetchData();
   }, []);
 
-const handleVote = async (movie, type) => {
-    const token = localStorage.getItem('cinematch_token'); // 👈 แก้ให้เหลือแค่นี้ครับ
+  const handleVote = async (movie, type) => {
+    const token = localStorage.getItem('cinematch_token'); 
     if (!token) {
       toast.error('กรุณาล็อกอินก่อนบันทึกความชอบ');
       return;
     }
 
-    // ✅ 1. Machine Learning: ให้ AI เรียนรู้และอัปเดตน้ำหนักความชอบทันที (ไม่ต้องรอ API)
+    let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+    if (!prefs.genreWeights) prefs.genreWeights = {};
+
     if (movie.genre_ids) {
       const GENRE_MAP_ID_TO_NAME = {
         28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
@@ -99,11 +93,6 @@ const handleVote = async (movie, type) => {
         10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
       };
 
-      // ดึงของเก่ามา ถ้าไม่มีให้สร้างใหม่
-      let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
-      if (!prefs.genreWeights) prefs.genreWeights = {};
-
-      // คำนวณคะแนน
       movie.genre_ids.forEach(id => {
         const genreName = GENRE_MAP_ID_TO_NAME[id];
         if (genreName) {
@@ -115,14 +104,27 @@ const handleVote = async (movie, type) => {
         }
       });
       
-      // บันทึกค่าน้ำหนักที่เรียนรู้ใหม่ลง Local Storage ทันที
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // 2. ยิง API เซฟลงฐานข้อมูลหลังบ้าน
+    // ✅ ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud ด้วย
+    axios.post('http://172.20.10.2:5000/api/preferences', 
+      { genreWeights: prefs.genreWeights },
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).catch(err => console.error("Pref Sync Error:", err));
+
     try {
+      // ✅ ส่งข้อมูล Like/Dislike พร้อมแนบคะแนน
       await axios.post('http://172.20.10.2:5000/api/likes', 
-        { film_id: movie.id, film_title: movie.title || movie.name, poster_path: movie.poster_path, type: type },
+        { 
+          film_id: movie.id, 
+          film_title: movie.title || movie.name, 
+          poster_path: movie.poster_path, 
+          type: type,
+          media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
+          genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
+          points: type === 'like' ? 2 : 0 // แนบคะแนนไปที่ตาราง Like ด้วย
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success(type === 'like' ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
@@ -171,7 +173,6 @@ const handleVote = async (movie, type) => {
       const castArray = thData.credits?.cast?.slice(0, 8) || [];
       const genres = thData.genres?.map(g => g.name).join(', ') || 'ไม่ระบุ';
 
-      // ✅ แก้ไขจุดนี้: เปลี่ยนจาก thData.watch?.providers เป็น thData['watch/providers']
       const allProviders = thData['watch/providers']?.results || {};
       const mergedProviders = { flatrate: [], rent: [], buy: [] };
       const seenIds = new Set();
@@ -191,7 +192,6 @@ const handleVote = async (movie, type) => {
         }
       };
 
-      // ดึงข้อมูลจากไทย (TH) ก่อน ถ้าไม่มีค่อยดึงจาก US, KR, JP, GB มาสำรองให้
       ['TH', 'US', 'KR', 'JP', 'GB'].forEach(addProvidersFromRegion);
       if (seenIds.size === 0) Object.keys(allProviders).forEach(addProvidersFromRegion);
       
@@ -291,7 +291,7 @@ const handleVote = async (movie, type) => {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-10">
             
-            {/* --- อันดับ 1 (ลดขนาดลง 5%) --- */}
+            {/* --- อันดับ 1 --- */}
             {top1 && (
               <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1]" onClick={() => handleMovieClick(top1)}>
                 <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
@@ -340,7 +340,7 @@ const handleVote = async (movie, type) => {
             </div>
           </div>
 
-          {/* --- อันดับ 4-10: ย้ายปุ่ม Like/Dislike มาไว้ซ้าย-ขวาล่าง และ % Match ไปขวาบน --- */}
+          {/* --- อันดับ 4-10 --- */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-lg font-black text-[#210100]">อันดับ 4 - 10</h4>
@@ -352,19 +352,16 @@ const handleVote = async (movie, type) => {
                   <div className="w-full aspect-2/3 rounded-xl overflow-hidden shadow-sm border border-[#FECE79]/40 relative bg-gray-100 mb-2">
                     <img src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`} alt={movie.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     
-                    {/* อันดับ (มุมซ้ายบน) */}
                     <div className="absolute top-0 left-0 bg-[#210100]/90 text-white w-8 h-8 rounded-br-xl font-black flex items-center justify-center text-sm shadow-md backdrop-blur-sm z-10">
                       {movie.rank}
                     </div>
                     
-                    {/* % Match (มุมขวาบน สไตล์เดียวกับ Top 1-3) */}
                     <div className="absolute top-2 right-2 z-10">
                       <span className="bg-[#210100]/80 text-[#FECE79] px-2 py-1 rounded-md text-[10px] font-black shadow-md border border-[#FECE79]/30 backdrop-blur-sm">
                         🎯 {movie.matchPercent}% Match
                       </span>
                     </div>
                     
-                    {/* ปุ่ม Like/Dislike (มุมซ้ายล่างและขวาล่าง สไตล์เดียวกับแถวปกติ) */}
                     <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-10">
                       <button onClick={(e) => { e.stopPropagation(); handleVote(movie, 'dislike'); }} className="w-8 h-8 bg-[#8C0902]/90 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:scale-110 shadow-lg border border-white/20 transition-transform">
                         <svg className="w-4 h-4 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
