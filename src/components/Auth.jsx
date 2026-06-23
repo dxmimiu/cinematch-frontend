@@ -23,21 +23,28 @@ export default function Auth({ onLoginSuccess }) {
     try {
       if (isLoginMode) {
         // --- 1. โหมดเข้าสู่ระบบ (Login) ---
-        const res = await axios.post('http://172.20.10.2:5000/api/login', { email, password });
-        localStorage.setItem('cinematch_token', res.data.token); 
+        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/login', {
+          email: email,
+          password: password
+        });
         
         onLoginSuccess(res.data.user, 'login');
       } else {
         // --- 2. โหมดสมัครสมาชิก (Register) ---
-        const res = await axios.post('http://172.20.10.2:5000/api/register', { name, email, password });
-        localStorage.setItem('cinematch_token', res.data.token); 
+        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/register', {
+          name: name,
+          email: email,
+          password: password
+      }); 
         
         onLoginSuccess(res.data.user, 'register'); 
       }
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
-    } finally {
-      setIsLoading(false);
+    // 🟢 เติม 2 บรรทัดนี้เข้าไป เพื่อให้มันฟ้องหน้าจอตรงๆ เลยว่าพังเพราะอะไร!
+    console.error("Auth Error Full:", err);
+    alert("สาเหตุที่พัง: " + err.message); 
+    
+    toast.error('เกิดข้อผิดพลาดในการเชื่อมต่อ'); // (อันนี้โค้ดเดิมของคุณ)
     }
   };
 

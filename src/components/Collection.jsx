@@ -49,7 +49,7 @@ const fetchTmdbData = async (items) => {
     setIsLoading(true);
     const token = localStorage.getItem('cinematch_token');
     try {
-      const res = await axios.get('http://172.20.10.2:5000/api/likes', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get('https://://cinematch-backend-hdvz.onrender.com/api/likes', { headers: { Authorization: `Bearer ${token}` } });
       
       // ✅ แก้ไข: ข้อมูลที่ได้มาคือ Array ก้อนเดียว เราต้องแยกกรองเองว่าอันไหน Like อันไหน Dislike
       const allLikes = res.data || [];
@@ -84,7 +84,7 @@ const fetchTmdbData = async (items) => {
       // ใน server.js ที่ให้ไป ตอนนี้รองรับการ INSERT OR REPLACE 
       // เพื่อความง่าย เราใช้การยิง 'dislike' ทับ หรือคุณอาจจะต้องเพิ่ม endpoint ลบ 
       // แต่เบื้องต้น ผมจะปรับให้มันยิง 'remove' เพื่อเปลี่ยนสถานะ
-      await axios.post('http://172.20.10.2:5000/api/likes', 
+      await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/likes', 
         { movie_id: film_id, action: 'remove' }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );

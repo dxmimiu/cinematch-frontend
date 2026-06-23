@@ -107,7 +107,7 @@ export default function Result({ onLeave }) {
       const token = localStorage.getItem('cinematch_token');
       if (!token) return { likedIds: [], dislikedIds: [] };
       try {
-        const res = await axios.get('http://172.20.10.2:5000/api/likes', {
+        const res = await axios.get('https://://cinematch-backend-hdvz.onrender.com/api/likes', {
           headers: { Authorization: `Bearer ${token}` }
         });
         const liked = res.data.liked || [];
@@ -136,7 +136,7 @@ export default function Result({ onLeave }) {
             const roomData = JSON.parse(localStorage.getItem('cinematch_room') || '{}');
             const pin = roomData.pin || '00000';
             const token = localStorage.getItem('cinematch_token');
-            const res = await axios.get(`http://172.20.10.2:5000/api/rooms/status/${pin}`, {
+            const res = await axios.get(`https://://cinematch-backend-hdvz.onrender.com/api/rooms/status/${pin}`, {
               headers: { Authorization: `Bearer ${token}` }
             });
             dataToUse = res.data?.results || [];
@@ -211,7 +211,7 @@ export default function Result({ onLeave }) {
     }
 
     // ✅ ยิง API ซิงค์คะแนนขึ้น Cloud ด้วย
-    axios.post('http://172.20.10.2:5000/api/preferences', 
+    axios.post('https://://cinematch-backend-hdvz.onrender.com/api/preferences', 
       { genreWeights: JSON.parse(localStorage.getItem('cinematch_preferences')).genreWeights },
       { headers: { Authorization: `Bearer ${token}` } }
     ).catch(err => console.error("Pref Sync Error:", err));
@@ -219,12 +219,12 @@ export default function Result({ onLeave }) {
     try {
       if (type === 'like') {
         if (isCurrentlyLiked) {
-          await axios.delete(`http://172.20.10.2:5000/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
+          await axios.delete(`https://://cinematch-backend-hdvz.onrender.com/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
           setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
           // ✅ แนบคะแนนและข้อมูลพื้นฐานครบถ้วน
-          await axios.post('http://172.20.10.2:5000/api/likes', 
+          await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
               film_title: filmTitle, 
@@ -242,12 +242,12 @@ export default function Result({ onLeave }) {
         }
       } else {
         if (isCurrentlyDisliked) {
-          await axios.delete(`http://172.20.10.2:5000/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
+          await axios.delete(`https://://cinematch-backend-hdvz.onrender.com/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
           setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
           // ✅ แนบคะแนน 0
-          await axios.post('http://172.20.10.2:5000/api/likes', 
+          await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
               film_title: filmTitle, 
