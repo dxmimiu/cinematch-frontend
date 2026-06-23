@@ -39,7 +39,7 @@ export default function App() {
       return;
     }
 
-    axios.get('https://://cinematch-backend-hdvz.onrender.com/api/verify', {
+    axios.get('https://cinematch-backend-hdvz.onrender.com/api/verify', {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => {
@@ -76,7 +76,7 @@ export default function App() {
     const token = localStorage.getItem('cinematch_token');
     
     // พยายามบันทึกสถานะลงหลังบ้าน
-    axios.post('https://://cinematch-backend-hdvz.onrender.com/api/users/complete-quiz', {}, {
+    axios.post('https://cinematch-backend-hdvz.onrender.com/api/users/complete-quiz', {}, {
       headers: { Authorization: `Bearer ${token}` }
     })
     .finally(() => {

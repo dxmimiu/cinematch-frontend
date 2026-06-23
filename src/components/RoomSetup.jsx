@@ -41,7 +41,7 @@ export default function RoomSetup({ onNext }) {
     try {
       if (mode === 'create') {
         // ยิง API สร้างห้อง (เป็น Host)
-        const res = await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/rooms/create', 
+        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/rooms/create', 
           { hostName: name, genreWeights },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -51,7 +51,7 @@ export default function RoomSetup({ onNext }) {
         // ยิง API เข้าร่วมห้อง (เป็น Guest)
         if (!pin.trim() || pin.length !== 6) return toast.error("กรุณากรอกรหัส PIN 6 หลักให้ถูกต้อง");
         
-        await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/rooms/join', 
+        await axios.post('https://cinematch-backend-hdvz.onrender.com/api/rooms/join', 
           { pin, guestName: name, genreWeights },
           { headers: { Authorization: `Bearer ${token}` } }
         );

@@ -90,7 +90,7 @@ export default function ThisOrThat({ onComplete }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
       // ยิง API ซิงค์คะแนนขึ้น Supabase
-      axios.post('https://://cinematch-backend-hdvz.onrender.com/api/preferences', 
+      axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
         { genreWeights: prefs.genreWeights },
         { headers: { Authorization: `Bearer ${token}` } }
       ).catch(err => console.error("Pref Sync Error:", err));
@@ -98,7 +98,7 @@ export default function ThisOrThat({ onComplete }) {
 
     // 🟢 2. บันทึกประวัติการเลือกหนังลงตาราง user_likes
     try {
-      await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/likes', 
+      await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { 
           movie_id: selectedMovie.id, 
           action: 'this_or_that_choice',

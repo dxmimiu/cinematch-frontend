@@ -26,7 +26,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
 
       try {
-        const recPromise = axios.post('https://://cinematch-backend-hdvz.onrender.com/api/recommendations', 
+        const recPromise = axios.post('https://cinematch-backend-hdvz.onrender.com/api/recommendations', 
           { genreWeights: genreWeights },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -108,14 +108,14 @@ export default function Home({ setStep, currentUser, userPreferences }) {
     }
 
     // ✅ ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud ด้วย
-    axios.post('https://://cinematch-backend-hdvz.onrender.com/api/preferences', 
+    axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
       { genreWeights: prefs.genreWeights },
       { headers: { Authorization: `Bearer ${token}` } }
     ).catch(err => console.error("Pref Sync Error:", err));
 
     try {
       // ✅ ส่งข้อมูล Like/Dislike พร้อมแนบคะแนน
-      await axios.post('https://://cinematch-backend-hdvz.onrender.com/api/likes', 
+      await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { 
           film_id: movie.id, 
           film_title: movie.title || movie.name, 

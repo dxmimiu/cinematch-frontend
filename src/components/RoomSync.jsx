@@ -14,7 +14,7 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
     // ตั้งเวลาให้หน้าเว็บยิงไปถามเซิร์ฟเวอร์ทุกๆ 3 วินาที (Polling)
     const interval = setInterval(async () => {
       try {
-        const res = await axios.get(`https://://cinematch-backend-hdvz.onrender.com/api/rooms/status/${roomPin}`, {
+        const res = await axios.get(`https://cinematch-backend-hdvz.onrender.com/api/rooms/status/${roomPin}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -50,7 +50,7 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
     const token = localStorage.getItem('cinematch_token');
     
     try {
-      const res = await axios.post(`https://://cinematch-backend-hdvz.onrender.com/api/rooms/match/${roomPin}`, {}, {
+      const res = await axios.post(`https://cinematch-backend-hdvz.onrender.com/api/rooms/match/${roomPin}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // นำผลลัพธ์ที่ได้จากการคำนวณเก็บไว้ แล้วไปหน้าต่อไป
