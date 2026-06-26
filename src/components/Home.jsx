@@ -107,14 +107,14 @@ export default function Home({ setStep, currentUser, userPreferences }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // ✅ ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud ด้วย
+    // ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud
     axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
       { genreWeights: prefs.genreWeights },
       { headers: { Authorization: `Bearer ${token}` } }
     ).catch(err => console.error("Pref Sync Error:", err));
 
     try {
-      // ✅ ส่งข้อมูล Like/Dislike พร้อมแนบคะแนน
+      // ส่งข้อมูล Like/Dislike พร้อมแนบคะแนน
       await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { 
           film_id: movie.id, 
@@ -123,7 +123,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
           type: type,
           media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
           genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-          points: type === 'like' ? 2 : 0 // แนบคะแนนไปที่ตาราง Like ด้วย
+          points: type === 'like' ? 2 : 0 // แนบคะแนนไปที่ตาราง Like
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -381,7 +381,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
 
         <section>
           <div className="flex items-end justify-between mb-6">
-            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ภาพยนตร์กำลังฮิตในไทย</h2>
+            <h2 className="text-2xl font-black text-[#210100] tracking-tight">ภาพยนตร์กำลังฮิต</h2>
             <ScrollButtons scrollRef={movieScrollRef} />
           </div>
           <div ref={movieScrollRef} className="flex overflow-x-auto gap-5 pb-6 pt-2 scrollbar-hide snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
