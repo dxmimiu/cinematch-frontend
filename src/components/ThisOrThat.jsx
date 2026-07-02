@@ -3,10 +3,19 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const GENRE_MAP = {
-  28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
-  99: "สารคดี", 18: "ดราม่าเข้มข้น", 10751: "ครอบครัว", 14: "แฟนตาซีเวทมนตร์", 36: "ประวัติศาสตร์",
-  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับซ่อนเงื่อน", 10749: "โรแมนติก", 878: "ไซไฟอวกาศ",
-  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
+  28: "แอคชั่น", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลก", 80: "อาชญากรรม",
+  99: "สารคดี", 18: "ดราม่า", 10751: "ครอบครัว", 14: "แฟนตาซี", 36: "ประวัติศาสตร์",
+  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับ", 10749: "โรแมนติก", 878: "ไซไฟ",
+  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
+};
+
+// 🟢 ฟังก์ชันคำนวณคะแนนตามความเร็ว (เพิ่มใหม่)
+const calculatePoints = (timeTaken) => {
+  if (timeTaken <= 3) return 5;       // ตัดสินใจใน 3 วิแรก = โคตรชอบ (5 แต้ม)
+  if (timeTaken <= 7) return 4;       // ตัดสินใจใน 7 วิ = ชอบมาก (4 แต้ม)
+  if (timeTaken <= 12) return 3;      // ตัดสินใจใน 12 วิ = ชอบปานกลาง (3 แต้ม)
+  if (timeTaken < 15) return 2;       // ลังเลมาก (2 แต้ม)
+  return 1;                           // หมดเวลา/ไม่ได้ตั้งใจเลือก (1 แต้ม)
 };
 
 export default function ThisOrThat({ onComplete }) {
@@ -14,6 +23,7 @@ export default function ThisOrThat({ onComplete }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(15);
+  const [skipCount, setSkipCount] = useState(0); 
 
   useEffect(() => {
     const fetchRandomMovies = async () => {
@@ -21,7 +31,6 @@ export default function ThisOrThat({ onComplete }) {
         const API_KEY = "181edc5801db6678de6ccb2864149a6a";
         const randomPage = Math.floor(Math.random() * 5) + 1;
         
-        // 🟢 แก้ไข: ดึงข้อมูลทีเดียว 2 หน้า เพื่อกวาดหนังมาเผื่อกรอง (รวม 40 เรื่อง)
         const [res1, res2] = await Promise.all([
           fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=popularity.desc&page=${randomPage}`),
           fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}&language=th-TH&sort_by=popularity.desc&page=${randomPage + 1}`)
@@ -30,14 +39,10 @@ export default function ThisOrThat({ onComplete }) {
         const data1 = await res1.json();
         const data2 = await res2.json();
         
-        // รวมข้อมูลจากทั้ง 2 หน้าเข้าด้วยกัน
         const allMovies = [...(data1.results || []), ...(data2.results || [])];
-        
-        // กรองเอาเฉพาะเรื่องที่มีรูปปกและเรื่องย่อภาษาไทย
         const validMovies = allMovies.filter(m => m.poster_path && m.overview);
         
         const pairs = [];
-        // วนลูปจับคู่ให้ครบ 7 คู่
         for (let i = 0; i < 7; i++) {
           if (validMovies.length >= 2) {
             const m1 = validMovies.splice(Math.floor(Math.random() * validMovies.length), 1)[0];
@@ -55,26 +60,56 @@ export default function ThisOrThat({ onComplete }) {
     fetchRandomMovies();
   }, []);
 
+  // ตัวนับเวลาถอยหลัง (หยุดที่ 0)
   useEffect(() => {
     if (isLoading) return;
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleSelect(moviePairs[currentIndex].left); 
-          return 15;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
   }, [currentIndex, isLoading]);
 
-  const handleSelect = async (selectedMovie) => {
-    setTimeLeft(15); 
+  // ลอจิกจัดการเมื่อเวลาหมด
+  useEffect(() => {
+    if (timeLeft === 0 && !isLoading && moviePairs.length > 0) {
+      if (skipCount < 3) {
+        toast('หมดเวลา! ข้ามคู่นี้ให้อัตโนมัติ', { icon: '⏱️' });
+        handleSkip();
+      } else {
+        toast.error('หมดเวลาและสิทธิ์ข้ามหมดแล้ว กรุณาเลือกหนังเพื่อไปต่อค่ะ', { duration: 3000 });
+      }
+    }
+  }, [timeLeft]);
+
+  const handleSkip = () => {
+    if (skipCount >= 3) {
+      toast.error('คุณใช้สิทธิ์ข้ามครบ 3 ครั้งแล้ว กรุณาเลือกหนังค่ะ');
+      return;
+    }
     
+    setSkipCount(prev => prev + 1);
+    setTimeLeft(15);
+    
+    if (currentIndex + 1 < moviePairs.length) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      toast.success('วิเคราะห์รสนิยมเรียบร้อย!');
+      onComplete();
+    }
+  };
+
+  const handleSelect = async (selectedMovie) => {
+    // 🟢 1. คำนวณเวลาที่ใช้ไปและแปลงเป็นคะแนน
+    const timeTaken = 15 - timeLeft; 
+    const dynamicPoints = calculatePoints(timeTaken);
+    
+    // (ลองเปิด Console ในเบราว์เซอร์ดูตอนกดเลือก จะเห็นเลยว่าได้กี่แต้ม)
+    console.log(`⏱️ ใช้เวลาเลือก: ${timeTaken} วินาที | 🎯 ได้คะแนนความชอบ: ${dynamicPoints} แต้ม`); 
+
+    setTimeLeft(15); 
     const token = localStorage.getItem('cinematch_token');
 
-    // 🟢 1. อัปเดตค่าน้ำหนักความชอบ (Genre Weights) ลง LocalStorage และส่งขึ้น Cloud (ตาราง user_preferences)
+    // 🟢 2. อัปเดตคะแนนลง LocalStorage ด้วย dynamicPoints แทน 3
     if (selectedMovie.genre_ids) {
       let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
       if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -82,21 +117,19 @@ export default function ThisOrThat({ onComplete }) {
       selectedMovie.genre_ids.forEach(id => {
         const genreName = GENRE_MAP[id];
         if (genreName) {
-          // ให้ 3 คะแนนสำหรับหนังที่ชนะในเกม This or That
-          prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 3; 
+          prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + dynamicPoints; 
         }
       });
       
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
-      // ยิง API ซิงค์คะแนนขึ้น Supabase
       axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
         { genreWeights: prefs.genreWeights },
         { headers: { Authorization: `Bearer ${token}` } }
       ).catch(err => console.error("Pref Sync Error:", err));
     }
 
-    // 🟢 2. บันทึกประวัติการเลือกหนังลงตาราง user_likes
+    // 🟢 3. ส่งข้อมูลเข้า Supabase ด้วย dynamicPoints แทน 3
     try {
       await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { 
@@ -106,7 +139,7 @@ export default function ThisOrThat({ onComplete }) {
           movie_title: selectedMovie.title,
           poster_path: selectedMovie.poster_path,
           genres: selectedMovie.genre_ids ? selectedMovie.genre_ids.join(',') : '',
-          points: 3
+          points: dynamicPoints
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -132,78 +165,78 @@ export default function ThisOrThat({ onComplete }) {
   const currentPair = moviePairs[currentIndex];
 
   return (
-    <div className="min-h-screen bg-[#FFFDF9] flex flex-col items-center justify-center p-6 animate-fade-in">
-      <div className="text-center mb-8">
-        <span className="bg-[#FECE79]/30 text-[#8C0902] text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
+    <div className="min-h-screen bg-[#FFFDF9] flex flex-col items-center justify-center p-3 md:p-6 animate-fade-in overflow-hidden">
+      <div className="text-center mb-3 md:mb-8">
+        <span className="bg-[#FECE79]/30 text-[#8C0902] text-[10px] md:text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
           รอบสุ่มความชอบ
         </span>
-        <h1 className="text-3xl font-black text-[#210100] mt-3">เลือกเรื่องที่คุณสนใจมากกว่า?</h1>
-        <p className="text-[#8C0902] font-black text-xl mt-2">เหลือเวลา {timeLeft} วินาที</p>
-        <p className="text-[#B14A36] text-sm mt-1">คู่ที่ {currentIndex + 1} จากทั้งหมด 7 คู่</p>
+        <h1 className="text-lg md:text-3xl font-black text-[#210100] mt-2 md:mt-3">ชอบเรื่องไหนมากกว่ากัน?</h1>
+        <p className="text-[#8C0902] font-black text-sm md:text-xl mt-1">{timeLeft > 0 ? `${timeLeft} วินาที` : 'กรุณาเลือกหนัง'}</p>
+        <p className="text-[#B14A36] text-[10px] md:text-sm mt-0.5 md:mt-1">คู่ที่ {currentIndex + 1} จาก 7</p>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-center gap-8 max-w-5xl w-full">
-        {/* การ์ดภาพยนตร์ฝั่งซ้าย */}
-        <div onClick={() => handleSelect(currentPair.left)} className="flex-1 bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-3xl p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer transform hover:-translate-y-2 group w-full max-w-sm mx-auto flex flex-col h-full">
-          <div className="w-full aspect-square rounded-2xl overflow-hidden mb-4 bg-gray-100 shrink-0 relative">
+      <div className="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-8 max-w-5xl w-full">
+        
+        {/* การ์ดภาพยนตร์ฝั่งซ้าย (บน) */}
+        <div onClick={() => handleSelect(currentPair.left)} className="bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-2xl md:rounded-3xl p-2.5 md:p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col w-full max-w-60 md:max-w-sm md:flex-1">
+          <div className="w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-4 bg-gray-100 relative shrink-0">
             <img src={`https://image.tmdb.org/t/p/w500${currentPair.left.poster_path}`} alt={currentPair.left.title} className="w-full h-full object-cover" />
-            <div className="absolute top-2 right-2 bg-[#210100]/80 text-[#FECE79] text-xs font-black px-2 py-1 rounded-md backdrop-blur-sm shadow-md">
+            <div className="absolute top-1.5 right-1.5 md:top-2 md:right-2 bg-[#210100]/80 text-[#FECE79] text-[10px] md:text-xs font-black px-1.5 py-0.5 md:px-2 md:py-1 rounded backdrop-blur-sm shadow-md">
               ★ {currentPair.left.vote_average ? currentPair.left.vote_average.toFixed(1) : "N/A"}
             </div>
           </div>
-          <div className="flex flex-col grow px-2 pb-2">
-            <h2 className="font-black text-lg text-[#210100] group-hover:text-[#8C0902] line-clamp-1 text-center w-full mb-3">{currentPair.left.title}</h2>
-            
-            <div className="mt-auto bg-[#FFFDF9] border border-[#FECE79]/40 rounded-xl p-3 flex flex-col gap-2.5">
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {getKeywords(currentPair.left.genre_ids).length > 0 ? (
-                  getKeywords(currentPair.left.genre_ids).map((keyword, idx) => (
-                    <span key={idx} className="bg-[#FECE79]/20 text-[#8C0902] px-2 py-1 rounded-md text-[10px] font-extrabold border border-[#FECE79]/50 shadow-sm">
-                      {keyword}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-[#210100]/50 font-medium italic">ไม่มีข้อมูลหมวดหมู่</span>
-                )}
-              </div>
-              <p className="text-[11px] font-medium text-[#210100]/70 line-clamp-1 text-center leading-relaxed border-t border-[#FECE79]/30 pt-2.5" title={currentPair.left.overview}>
-                {currentPair.left.overview}
-              </p>
+          <div className="flex flex-col grow justify-between">
+            <h2 className="font-black text-sm md:text-lg text-[#210100] group-hover:text-[#8C0902] line-clamp-1 md:line-clamp-2 text-center w-full mb-1.5 md:mb-3">{currentPair.left.title}</h2>
+            <div className="flex flex-wrap justify-center gap-1">
+              {getKeywords(currentPair.left.genre_ids).map((keyword, idx) => (
+                <span key={idx} className="bg-[#FECE79]/20 text-[#8C0902] px-1.5 md:px-2 py-0.5 md:py-1 rounded text-[9px] md:text-[10px] font-extrabold border border-[#FECE79]/50 shadow-sm whitespace-nowrap">
+                  {keyword}
+                </span>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="text-xl font-black text-[#8C0902] bg-[#FECE79]/20 w-12 h-12 rounded-full flex items-center justify-center border border-[#FECE79]/40 shrink-0">VS</div>
+        {/* ป้าย VS */}
+        <div className="self-center text-[11px] md:text-xl font-black text-[#8C0902] bg-[#FECE79]/20 w-7 h-7 md:w-12 md:h-12 rounded-full flex items-center justify-center border border-[#FECE79]/40 shrink-0 my-1 md:my-0 md:mx-2 z-10">
+          VS
+        </div>
 
-        {/* การ์ดภาพยนตร์ฝั่งขวา */}
-        <div onClick={() => handleSelect(currentPair.right)} className="flex-1 bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-3xl p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer transform hover:-translate-y-2 group w-full max-w-sm mx-auto flex flex-col h-full">
-          <div className="w-full aspect-square rounded-2xl overflow-hidden mb-4 bg-gray-100 shrink-0 relative">
+        {/* การ์ดภาพยนตร์ฝั่งขวา (ล่าง) */}
+        <div onClick={() => handleSelect(currentPair.right)} className="bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-2xl md:rounded-3xl p-2.5 md:p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col w-full max-w-60 md:max-w-sm md:flex-1">
+          <div className="w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-4 bg-gray-100 relative shrink-0">
             <img src={`https://image.tmdb.org/t/p/w500${currentPair.right.poster_path}`} alt={currentPair.right.title} className="w-full h-full object-cover" />
-            <div className="absolute top-2 right-2 bg-[#210100]/80 text-[#FECE79] text-xs font-black px-2 py-1 rounded-md backdrop-blur-sm shadow-md">
+            <div className="absolute top-1.5 right-1.5 md:top-2 md:right-2 bg-[#210100]/80 text-[#FECE79] text-[10px] md:text-xs font-black px-1.5 py-0.5 md:px-2 md:py-1 rounded backdrop-blur-sm shadow-md">
               ★ {currentPair.right.vote_average ? currentPair.right.vote_average.toFixed(1) : "N/A"}
             </div>
           </div>
-          <div className="flex flex-col grow px-2 pb-2">
-            <h2 className="font-black text-lg text-[#210100] group-hover:text-[#8C0902] line-clamp-1 text-center w-full mb-3">{currentPair.right.title}</h2>
-            
-            <div className="mt-auto bg-[#FFFDF9] border border-[#FECE79]/40 rounded-xl p-3 flex flex-col gap-2.5">
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {getKeywords(currentPair.right.genre_ids).length > 0 ? (
-                  getKeywords(currentPair.right.genre_ids).map((keyword, idx) => (
-                    <span key={idx} className="bg-[#FECE79]/20 text-[#8C0902] px-2 py-1 rounded-md text-[10px] font-extrabold border border-[#FECE79]/50 shadow-sm">
-                      {keyword}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-[#210100]/50 font-medium italic">ไม่มีข้อมูลหมวดหมู่</span>
-                )}
-              </div>
-              <p className="text-[11px] font-medium text-[#210100]/70 line-clamp-1 text-center leading-relaxed border-t border-[#FECE79]/30 pt-2.5" title={currentPair.right.overview}>
-                {currentPair.right.overview}
-              </p>
+          <div className="flex flex-col grow justify-between">
+            <h2 className="font-black text-sm md:text-lg text-[#210100] group-hover:text-[#8C0902] line-clamp-1 md:line-clamp-2 text-center w-full mb-1.5 md:mb-3">{currentPair.right.title}</h2>
+            <div className="flex flex-wrap justify-center gap-1">
+              {getKeywords(currentPair.right.genre_ids).map((keyword, idx) => (
+                <span key={idx} className="bg-[#FECE79]/20 text-[#8C0902] px-1.5 md:px-2 py-0.5 md:py-1 rounded text-[9px] md:text-[10px] font-extrabold border border-[#FECE79]/50 shadow-sm whitespace-nowrap">
+                  {keyword}
+                </span>
+              ))}
             </div>
           </div>
         </div>
+
+      </div>
+
+      {/* ปุ่ม Skip */}
+      <div className="mt-4 md:mt-8">
+        <button 
+          onClick={handleSkip}
+          disabled={skipCount >= 3}
+          className={`px-5 py-2 md:px-6 md:py-2 rounded-full font-bold text-[11px] md:text-sm transition-all border ${
+            skipCount >= 3 
+              ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed'
+              : 'bg-transparent border-[#210100]/30 text-[#210100]/60 hover:text-[#8C0902] hover:border-[#8C0902]'
+          }`}
+        >
+          ข้ามคู่นี้ ({skipCount}/3)
+        </button>
       </div>
     </div>
   );

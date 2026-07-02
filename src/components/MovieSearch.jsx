@@ -75,7 +75,6 @@ export default function MovieSearch({ currentUser }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // ✅ ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud ด้วย
     axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
       { genreWeights: prefs.genreWeights },
       { headers: { Authorization: `Bearer ${token}` } }
@@ -88,7 +87,6 @@ export default function MovieSearch({ currentUser }) {
           setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
-          // ✅ ส่งข้อมูลพร้อมคะแนน
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
@@ -97,7 +95,7 @@ export default function MovieSearch({ currentUser }) {
               type: 'like',
               media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
               genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-              points: 2 // แนบคะแนน 
+              points: 2 
             },
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -111,7 +109,6 @@ export default function MovieSearch({ currentUser }) {
           setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
-          // ✅ ส่งข้อมูลพร้อมคะแนนเป็น 0
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
@@ -120,7 +117,7 @@ export default function MovieSearch({ currentUser }) {
               type: 'dislike',
               media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
               genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-              points: 0 // แนบคะแนน
+              points: 0 
             },
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -271,26 +268,31 @@ export default function MovieSearch({ currentUser }) {
                           ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
                         </div>
                         <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
+                          
+                          {/* 🟢 แก้ไข: ปุ่ม Dislike */}
                           <button 
                             onClick={(e) => handleVote(e, item, 'dislike')} 
                             className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
                               checkIsDisliked(item.id) 
-                                ? 'bg-[#210100] text-white scale-110' 
+                                ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
                                 : 'bg-[#8C0902]/90 text-white hover:bg-[#8C0902] hover:scale-110'
                             }`}
                           >
                             <svg className="w-4 h-4 md:w-5 md:h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
                           </button>
+
+                          {/* 🟢 แก้ไข: ปุ่ม Like */}
                           <button 
                             onClick={(e) => handleVote(e, item, 'like')} 
                             className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
                               checkIsLiked(item.id) 
-                                ? 'bg-[#8C0902] text-white scale-110 border-[#8C0902]' 
+                                ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
                                 : 'bg-[#E6A341]/90 text-[#210100] hover:bg-[#E6A341] hover:scale-110'
                             }`}
                           >
                             <svg className="w-4 h-4 md:w-5 md:h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
                           </button>
+                          
                         </div>
                       </div>
                       <div className="flex flex-col grow px-1">
@@ -394,7 +396,6 @@ export default function MovieSearch({ currentUser }) {
                   </div>
                 </div>
               )}
-
               <div className="mt-auto pt-4 border-t border-[#FECE79]/40">
                 <h4 className="text-xs font-bold text-[#8C0902] mb-3">ช่องทางการรับชม:</h4>
                 <div className="flex flex-wrap gap-2 mb-6">

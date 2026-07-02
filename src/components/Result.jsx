@@ -210,7 +210,6 @@ export default function Result({ onLeave }) {
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
-    // ✅ ยิง API ซิงค์คะแนนขึ้น Cloud ด้วย
     axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
       { genreWeights: JSON.parse(localStorage.getItem('cinematch_preferences')).genreWeights },
       { headers: { Authorization: `Bearer ${token}` } }
@@ -223,7 +222,6 @@ export default function Result({ onLeave }) {
           setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
-          // ✅ แนบคะแนนและข้อมูลพื้นฐานครบถ้วน
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
@@ -232,7 +230,7 @@ export default function Result({ onLeave }) {
               type: 'like',
               media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
               genres: item.genre_ids ? item.genre_ids.join(',') : '',
-              points: 2 // แนบคะแนน
+              points: 2 
             },
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -246,7 +244,6 @@ export default function Result({ onLeave }) {
           setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
-          // ✅ แนบคะแนน 0
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
             { 
               film_id: filmId, 
@@ -408,32 +405,34 @@ export default function Result({ onLeave }) {
       <div className="max-w-7xl w-full">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-12">
           
+          {/* --- Top 1 Card --- */}
           {top1 && (
             <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1] p-1" onClick={() => handleMovieClick(top1)}>
               <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
               
+              {/* 🟢 ปุ่ม Like / Dislike (Top 1) */}
               <div className="absolute top-4 right-4 z-20 flex gap-2">
                 <button 
-                  onClick={(e) => handleLikeDislike(e, top1, 'like')} 
-                  className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm transition-all border ${
-                    checkIsLiked(top1.id) 
-                      ? 'bg-[#8C0902] border-[#8C0902] text-white scale-105' 
-                      : 'bg-white/90 border-white/30 text-[#210100] hover:bg-white'
-                  }`}
-                  title="ถูกใจ"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.512C4.5 9.11 5.61 8 7.001 8h3.497A1.498 1.498 0 0112 9.497v6.006a1.498 1.498 0 01-1.502 1.502H7.001A1.498 1.498 0 014.5 15.51v-4.998zm6 0V1.5a1.5 1.5 0 00-3 0v9.012m6 0v7.488m0 0h.75a2.25 2.25 0 002.25-2.25v-2.25a2.25 2.25 0 00-2.25-2.25H16.5" /></svg>
-                </button>
-                <button 
                   onClick={(e) => handleLikeDislike(e, top1, 'dislike')} 
-                  className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm transition-all border ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
                     checkIsDisliked(top1.id) 
-                      ? 'bg-[#210100] border-[#210100] text-white scale-105' 
-                      : 'bg-white/90 border-white/30 text-[#210100] hover:bg-white'
+                      ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
+                      : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                   }`}
                   title="ไม่ถูกใจ"
                 >
-                  <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.512C4.5 9.11 5.61 8 7.001 8h3.497A1.498 1.498 0 0112 9.497v6.006a1.498 1.498 0 01-1.502 1.502H7.001A1.498 1.498 0 014.5 15.51v-4.998zm6 0V1.5a1.5 1.5 0 00-3 0v9.012m6 0v7.488m0 0h.75a2.25 2.25 0 002.25-2.25v-2.25a2.25 2.25 0 00-2.25-2.25H16.5" /></svg>
+                  <svg className="w-5 h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+                </button>
+                <button 
+                  onClick={(e) => handleLikeDislike(e, top1, 'like')} 
+                  className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
+                    checkIsLiked(top1.id) 
+                      ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
+                      : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
+                  }`}
+                  title="ถูกใจ"
+                >
+                  <svg className="w-5 h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
                 </button>
               </div>
 
@@ -455,31 +454,33 @@ export default function Result({ onLeave }) {
             </div>
           )}
 
+          {/* --- Top 2-3 Cards --- */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
             {[top2, top3].map((movie, idx) => movie && (
               <div key={movie.id} onClick={() => handleMovieClick(movie)} className={`w-full h-full min-h-50 sm:min-h-auto relative group rounded-3xl overflow-hidden shadow-lg border-2 cursor-pointer flex flex-col justify-end p-5 ${idx === 0 ? 'border-[#C0C0C0]' : 'border-[#CD7F32]'}`}>
                 <img src={`https://image.tmdb.org/t/p/w780${movie.backdrop_path}`} alt={movie.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-all duration-700 bg-black" />
                 
+                {/* 🟢 ปุ่ม Like / Dislike (Top 2-3) */}
                 <div className="absolute top-3 right-3 z-20 flex gap-1.5">
                   <button 
-                    onClick={(e) => handleLikeDislike(e, movie, 'like')} 
-                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm transition-all border text-xs ${
-                      checkIsLiked(movie.id) 
-                        ? 'bg-[#8C0902] border-[#8C0902] text-white scale-105' 
-                        : 'bg-[#210100]/80 border-white/20 text-[#FECE79] hover:bg-white hover:text-black'
+                    onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
+                      checkIsDisliked(movie.id) 
+                        ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
+                        : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                     }`}
                   >
-                    👍
+                    <svg className="w-4 h-4 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
                   </button>
                   <button 
-                    onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
-                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm transition-all border text-xs ${
-                      checkIsDisliked(movie.id) 
-                        ? 'bg-[#210100] border-[#210100] text-white scale-105' 
-                        : 'bg-[#210100]/80 border-white/20 text-[#FECE79] hover:bg-white hover:text-black'
+                    onClick={(e) => handleLikeDislike(e, movie, 'like')} 
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
+                      checkIsLiked(movie.id) 
+                        ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
+                        : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
                     }`}
                   >
-                    👎
+                    <svg className="w-4 h-4 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
                   </button>
                 </div>
 
@@ -498,6 +499,7 @@ export default function Result({ onLeave }) {
           </div>
         </div>
 
+        {/* --- Top 4-10 Cards --- */}
         {otherRanks.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">
@@ -518,30 +520,31 @@ export default function Result({ onLeave }) {
                       <span className="bg-[#210100]/80 text-[#FECE79] px-1.5 py-0.5 rounded text-[8px] font-black border border-[#FECE79]/30 backdrop-blur-sm">🎯 {movie.matchPercent}% Match</span>
                     </div>
 
+                    {/* 🟢 ปุ่ม Like / Dislike (Top 4-10) */}
                     <div className="absolute bottom-2 right-2 z-20 flex gap-1">
                       <button 
-                        onClick={(e) => handleLikeDislike(e, movie, 'like')} 
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] shadow-md backdrop-blur-sm border transition-all ${
-                          checkIsLiked(movie.id) 
-                            ? 'bg-[#8C0902] border-[#8C0902] text-white scale-105' 
-                            : 'bg-[#210100]/80 border-white/20 text-[#FECE79] hover:bg-white hover:text-black'
+                        onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
+                        className={`w-7 h-7 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm border transition-transform ${
+                          checkIsDisliked(movie.id) 
+                            ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
+                            : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                         }`}
                       >
-                        👍
+                        <svg className="w-3.5 h-3.5 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
                       </button>
                       <button 
-                        onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] shadow-md backdrop-blur-sm border transition-all ${
-                          checkIsDisliked(movie.id) 
-                            ? 'bg-[#210100] border-[#210100] text-white scale-105' 
-                            : 'bg-[#210100]/80 border-white/20 text-[#FECE79] hover:bg-white hover:text-black'
+                        onClick={(e) => handleLikeDislike(e, movie, 'like')} 
+                        className={`w-7 h-7 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm border transition-transform ${
+                          checkIsLiked(movie.id) 
+                            ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
+                            : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
                         }`}
                       >
-                        👎
+                        <svg className="w-3.5 h-3.5 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
                       </button>
                     </div>
-                  </div>
 
+                  </div>
                   <h3 onClick={() => handleMovieClick(movie)} className="font-bold text-[#210100] text-xs line-clamp-2 hover:text-[#8C0902] transition-colors text-center px-1 cursor-pointer">{movie.title}</h3>
                 </div>
               ))}
@@ -561,6 +564,7 @@ export default function Result({ onLeave }) {
         </div>
       </div>
 
+      {/* --- Modal แสดงรายละเอียดภาพยนตร์ --- */}
       {selectedMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-[#210100]/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">
