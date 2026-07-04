@@ -9,13 +9,13 @@ const GENRE_MAP = {
   10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
 };
 
-// 🟢 ฟังก์ชันคำนวณคะแนนตามความเร็ว (เพิ่มใหม่)
+// 🟢 ฟังก์ชันคำนวณคะแนนตามความเร็ว
 const calculatePoints = (timeTaken) => {
   if (timeTaken <= 3) return 5;       // ตัดสินใจใน 3 วิแรก = โคตรชอบ (5 แต้ม)
   if (timeTaken <= 7) return 4;       // ตัดสินใจใน 7 วิ = ชอบมาก (4 แต้ม)
   if (timeTaken <= 12) return 3;      // ตัดสินใจใน 12 วิ = ชอบปานกลาง (3 แต้ม)
   if (timeTaken < 15) return 2;       // ลังเลมาก (2 แต้ม)
-  return 1;                           // หมดเวลา/ไม่ได้ตั้งใจเลือก (1 แต้ม)
+  return 1;                           // หมดเวลา/ตัดสินใจเกิน 15 วิ (ได้ 1 แต้ม)
 };
 
 export default function ThisOrThat({ onComplete }) {
@@ -69,17 +69,15 @@ export default function ThisOrThat({ onComplete }) {
     return () => clearInterval(timer);
   }, [currentIndex, isLoading]);
 
-  // ลอจิกจัดการเมื่อเวลาหมด
+  // 🟢 แก้ไขลอจิกเมื่อเวลาหมด: แจ้งเตือนเพื่อให้เลือก แต่ไม่ข้ามอัตโนมัติแล้ว
   useEffect(() => {
     if (timeLeft === 0 && !isLoading && moviePairs.length > 0) {
-      if (skipCount < 3) {
-        toast('หมดเวลา! ข้ามคู่นี้ให้อัตโนมัติ', { icon: '⏱️' });
-        handleSkip();
-      } else {
-        toast.error('หมดเวลาและสิทธิ์ข้ามหมดแล้ว กรุณาเลือกหนังเพื่อไปต่อค่ะ', { duration: 3000 });
-      }
+      toast.error('หมดเวลาแล้ว! คู่นี้จะถูกบันทึกเพียง 1 คะแนน กรุณาเลือกหนังเรื่องที่ชอบเพื่อไปต่อค่ะ', {
+        id: 'timeout-warning',
+        duration: 4000
+      });
     }
-  }, [timeLeft]);
+  }, [timeLeft, isLoading, moviePairs.length]);
 
   const handleSkip = () => {
     if (skipCount >= 3) {
@@ -99,17 +97,15 @@ export default function ThisOrThat({ onComplete }) {
   };
 
   const handleSelect = async (selectedMovie) => {
-    // 🟢 1. คำนวณเวลาที่ใช้ไปและแปลงเป็นคะแนน
+    // คำนวณเวลาที่ใช้ไป (ถ้า timeLeft เป็น 0 ค่า timeTaken จะเท่ากับ 15 ซึ่งได้ 1 แต้ม)
     const timeTaken = 15 - timeLeft; 
     const dynamicPoints = calculatePoints(timeTaken);
     
-    // (ลองเปิด Console ในเบราว์เซอร์ดูตอนกดเลือก จะเห็นเลยว่าได้กี่แต้ม)
     console.log(`⏱️ ใช้เวลาเลือก: ${timeTaken} วินาที | 🎯 ได้คะแนนความชอบ: ${dynamicPoints} แต้ม`); 
 
     setTimeLeft(15); 
     const token = localStorage.getItem('cinematch_token');
 
-    // 🟢 2. อัปเดตคะแนนลง LocalStorage ด้วย dynamicPoints แทน 3
     if (selectedMovie.genre_ids) {
       let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
       if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -129,7 +125,6 @@ export default function ThisOrThat({ onComplete }) {
       ).catch(err => console.error("Pref Sync Error:", err));
     }
 
-    // 🟢 3. ส่งข้อมูลเข้า Supabase ด้วย dynamicPoints แทน 3
     try {
       await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { 
@@ -171,13 +166,16 @@ export default function ThisOrThat({ onComplete }) {
           รอบสุ่มความชอบ
         </span>
         <h1 className="text-lg md:text-3xl font-black text-[#210100] mt-2 md:mt-3">ชอบเรื่องไหนมากกว่ากัน?</h1>
-        <p className="text-[#8C0902] font-black text-sm md:text-xl mt-1">{timeLeft > 0 ? `${timeLeft} วินาที` : 'กรุณาเลือกหนัง'}</p>
+        {/* 🟢 แสดงข้อความเตือนสีแดงกระพริบเมื่อหมดเวลา */}
+        <p className={`font-black text-sm md:text-xl mt-1 ${timeLeft === 0 ? 'text-red-600 animate-pulse' : 'text-[#8C0902]'}`}>
+          {timeLeft > 0 ? `${timeLeft} วินาที` : 'หมดเวลา! บันทึก 1 คะแนน (กรุณาเลือกหนัง)'}
+        </p>
         <p className="text-[#B14A36] text-[10px] md:text-sm mt-0.5 md:mt-1">คู่ที่ {currentIndex + 1} จาก 7</p>
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-8 max-w-5xl w-full">
         
-        {/* การ์ดภาพยนตร์ฝั่งซ้าย (บน) */}
+        {/* การ์ดภาพยนตร์ฝั่งซ้าย */}
         <div onClick={() => handleSelect(currentPair.left)} className="bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-2xl md:rounded-3xl p-2.5 md:p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col w-full max-w-60 md:max-w-sm md:flex-1">
           <div className="w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-4 bg-gray-100 relative shrink-0">
             <img src={`https://image.tmdb.org/t/p/w500${currentPair.left.poster_path}`} alt={currentPair.left.title} className="w-full h-full object-cover" />
@@ -197,12 +195,12 @@ export default function ThisOrThat({ onComplete }) {
           </div>
         </div>
 
-        {/* ป้าย VS */}
+        {/* VS */}
         <div className="self-center text-[11px] md:text-xl font-black text-[#8C0902] bg-[#FECE79]/20 w-7 h-7 md:w-12 md:h-12 rounded-full flex items-center justify-center border border-[#FECE79]/40 shrink-0 my-1 md:my-0 md:mx-2 z-10">
           VS
         </div>
 
-        {/* การ์ดภาพยนตร์ฝั่งขวา (ล่าง) */}
+        {/* การ์ดภาพยนตร์ฝั่งขวา */}
         <div onClick={() => handleSelect(currentPair.right)} className="bg-white border-2 border-[#FECE79]/30 hover:border-[#8C0902] rounded-2xl md:rounded-3xl p-2.5 md:p-4 shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col w-full max-w-60 md:max-w-sm md:flex-1">
           <div className="w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-4 bg-gray-100 relative shrink-0">
             <img src={`https://image.tmdb.org/t/p/w500${currentPair.right.poster_path}`} alt={currentPair.right.title} className="w-full h-full object-cover" />
