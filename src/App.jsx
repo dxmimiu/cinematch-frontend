@@ -43,16 +43,22 @@ export default function App() {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => {
+      // 🟢 Sliding Expiration: ถ้าเซิร์ฟเวอร์ส่ง Token ใบใหม่ (ที่ต่ออายุแล้ว 3 วัน) กลับมา ให้เซฟทับเลย
+      if (res.data.token) {
+        localStorage.setItem('cinematch_token', res.data.token);
+      }
+      
       setCurrentUser(res.data.user);
       routeUserFlow(res.data.user);
     })
     .catch(err => {
+      console.error("Auto-login failed:", err);
       localStorage.removeItem('cinematch_token'); 
       setStep(-1); 
     });
   }, []);
 
-  // ✅ แก้ไข: รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
+  // ✅ รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
   const handleLoginSuccess = (user, authType) => {
     setCurrentUser(user);
     
@@ -80,7 +86,7 @@ export default function App() {
       headers: { Authorization: `Bearer ${token}` }
     })
     .finally(() => {
-      // ✅ แก้ไข: ใช้ finally เพื่อให้ระบบพาวาร์ปไปหน้า This or That (0.5) ทันที
+      // ✅ ใช้ finally เพื่อให้ระบบพาวาร์ปไปหน้า This or That (0.5) ทันที
       // แม้ว่า Backend จะยังไม่มี API /complete-quiz ก็ตาม (กันพรีเซนต์หน้าขาว)
       setStep(0.5); 
     });

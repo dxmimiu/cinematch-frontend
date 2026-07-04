@@ -72,7 +72,7 @@ export default function ThisOrThat({ onComplete }) {
   // 🟢 แก้ไขลอจิกเมื่อเวลาหมด: แจ้งเตือนเพื่อให้เลือก แต่ไม่ข้ามอัตโนมัติแล้ว
   useEffect(() => {
     if (timeLeft === 0 && !isLoading && moviePairs.length > 0) {
-      toast.error('หมดเวลาแล้ว! คู่นี้จะถูกบันทึกเพียง 1 คะแนน กรุณาเลือกหนังเรื่องที่ชอบเพื่อไปต่อค่ะ', {
+      toast.error('หมดเวลาแล้ว! กรุณาเลือกหนังเรื่องที่ชอบเพื่อไปต่อ', {
         id: 'timeout-warning',
         duration: 4000
       });
@@ -81,7 +81,7 @@ export default function ThisOrThat({ onComplete }) {
 
   const handleSkip = () => {
     if (skipCount >= 3) {
-      toast.error('คุณใช้สิทธิ์ข้ามครบ 3 ครั้งแล้ว กรุณาเลือกหนังค่ะ');
+      toast.error('คุณใช้สิทธิ์ข้ามครบ 3 ครั้งแล้ว กรุณาเลือกหนัง');
       return;
     }
     
@@ -168,7 +168,7 @@ export default function ThisOrThat({ onComplete }) {
         <h1 className="text-lg md:text-3xl font-black text-[#210100] mt-2 md:mt-3">ชอบเรื่องไหนมากกว่ากัน?</h1>
         {/* 🟢 แสดงข้อความเตือนสีแดงกระพริบเมื่อหมดเวลา */}
         <p className={`font-black text-sm md:text-xl mt-1 ${timeLeft === 0 ? 'text-red-600 animate-pulse' : 'text-[#8C0902]'}`}>
-          {timeLeft > 0 ? `${timeLeft} วินาที` : 'หมดเวลา! บันทึก 1 คะแนน (กรุณาเลือกหนัง)'}
+          {timeLeft > 0 ? `${timeLeft} วินาที` : 'หมดเวลา! (กรุณาเลือกหนัง)'}
         </p>
         <p className="text-[#B14A36] text-[10px] md:text-sm mt-0.5 md:mt-1">คู่ที่ {currentIndex + 1} จาก 7</p>
       </div>
