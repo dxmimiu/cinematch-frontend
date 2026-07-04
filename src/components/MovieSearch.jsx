@@ -11,6 +11,7 @@ const GENRE_MAP = {
 
 export default function MovieSearch({ currentUser }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [aiMessage, setAiMessage] = useState('สวัสดีค่ะ! ฉันคือ CINE AI ผู้ช่วยเลือกหนังอัจฉริยะของคุณ ลองพิมพ์บอกสไตล์ภาพยนตร์หรือความรู้สึกในตอนนี้ให้ฉันฟังสิคะ');
   const [searchMovies, setSearchMovies] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -136,23 +137,52 @@ export default function MovieSearch({ currentUser }) {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
-      setHasSearched(false);
-      setSearchMovies([]);
-      return;
-    }
+    if (!searchQuery.trim()) return;
+
     setIsSearching(true);
     setHasSearched(true);
+    setSearchMovies([]);
+
+    const token = localStorage.getItem('cinematch_token');
+
     try {
-      const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-      const searchRes = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchQuery)}&page=1`);
-      const searchData = await searchRes.json();
-      const formattedMovies = searchData.results
-        .filter(item => item.poster_path && (item.media_type === 'movie' || item.media_type === 'tv'))
-        .map(item => ({...item}));
-      setSearchMovies(formattedMovies);
+      // 1. เรียกใช้งานระบบ AI Search Engine ผ่าน Proxy หลังบ้านของเรา
+      const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
+        { query: searchQuery },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setAiMessage(res.data.ai_message || "นี่คือภาพยนตร์ที่ฉันเลือกมาแนะนำให้คุณค่ะ:");
+
+      const movieIds = res.data.recommended_movie_ids || [];
+
+      if (movieIds.length > 0) {
+        // 2. ดึงข้อมูลรายละเอียดเต็มจาก TMDB เพื่อนำมาวาดตัวรูปการ์ด
+        const API_KEY = "181edc5801db6678de6ccb2864149a6a";
+        const fetchedDetails = await Promise.all(
+          movieIds.map(async (id) => {
+            try {
+              const movieRes = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
+              const movieData = await movieRes.json();
+              if (movieData.id && movieData.poster_path) {
+                return {
+                  ...movieData,
+                  media_type: 'movie',
+                  genre_ids: movieData.genres ? movieData.genres.map(g => g.id) : []
+                };
+              }
+              return null;
+            } catch (err) {
+              return null;
+            }
+          })
+        );
+        setSearchMovies(fetchedDetails.filter(m => m !== null));
+      }
     } catch (error) {
-      toast.error("ไม่สามารถค้นหาข้อมูลได้");
+      console.error("AI Routing Fail:", error);
+      toast.error("ปัญญาประดิษฐ์ประมวลผลลัพธ์ไม่สำเร็จ");
+      setAiMessage("ระบบคิดรวบยอดขัดข้องชั่วคราว ลองปรับลดคีย์เวิร์ดแล้วค้นหาใหม่อีกครั้งนะคะ");
     } finally {
       setIsSearching(false);
     }
@@ -235,100 +265,105 @@ export default function MovieSearch({ currentUser }) {
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-80px)] w-full animate-fade-in relative bg-[#FFFDF9]">
       
-      <div className="w-full flex-1 flex flex-col items-center justify-center px-4 pb-32 pt-10 overflow-y-auto">
-        {!hasSearched ? (
-          <div className="flex flex-col items-center justify-center text-center max-w-2xl w-full animate-fade-in">
-            <h1 className="text-3xl md:text-5xl font-black text-[#210100] tracking-tight mb-4 leading-tight">
-              ให้ฉันแนะนำภาพยนตร์ <br/> อะไรให้คุณดี ?
-            </h1>
+      <div className="w-full flex-1 flex flex-col items-center px-4 pb-32 pt-8 overflow-y-auto max-w-5xl">
+        
+        {/* 🤖 กล่องบทสนทนาแชทโมเดิร์นสไตล์ AI Chatbot */}
+        <div className="w-full bg-white border border-[#FECE79]/40 rounded-3xl p-6 md:p-8 shadow-[0_4px_25px_rgba(230,163,65,0.05)] mb-8 flex gap-4 items-start">
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-linear-to-br from-[#8C0902] to-[#B14A36] rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-md shrink-0 border border-white/20">
+            AI
           </div>
-        ) : (
-          <div className="w-full max-w-7xl animate-fade-in flex flex-col items-center h-full">
-            <div className="w-full flex items-center justify-between mb-8 border-b border-[#FECE79]/30 pb-4">
-              <h2 className="text-2xl font-black text-[#210100] tracking-tight">ผลการค้นหา: <span className="text-[#8C0902]">"{searchQuery}"</span></h2>
+          <div className="flex flex-col gap-1.5 pt-1">
+            <h4 className="text-xs font-black uppercase text-[#8C0902] tracking-wider">CINE AI Assistant</h4>
+            <p className="text-[#210100] text-sm md:text-base font-medium leading-relaxed whitespace-pre-line">
+              {aiMessage}
+            </p>
+          </div>
+        </div>
+
+        {/* 🎬 พื้นที่สำหรับแสดงการ์ดหนัง 3 เรื่องแนะนำ */}
+        {isSearching ? (
+          <div className="flex flex-col items-center justify-center py-12 flex-1">
+            <div className="w-12 h-12 border-4 border-[#FECE79] border-t-[#8C0902] rounded-full animate-spin mb-4"></div>
+            <p className="text-[#B14A36] font-bold text-sm tracking-wider animate-pulse">กำลังสืบค้นคลังภาพยนตร์เจาะลึก...</p>
+          </div>
+        ) : hasSearched && searchMovies.length > 0 ? (
+          <div className="w-full animate-fade-in">
+            <div className="w-full border-b border-[#FECE79]/30 pb-3 mb-6">
+              <h3 className="text-md font-black text-[#210100] uppercase tracking-wide">ภาพยนตร์ 3 เรื่องที่ดีที่สุดของคุณ</h3>
             </div>
             
-            {isSearching ? (
-              <div className="flex flex-col items-center justify-center flex-1">
-                <div className="w-12 h-12 border-4 border-[#FECE79] border-t-[#8C0902] rounded-full animate-spin mb-4"></div>
-                <p className="text-[#B14A36] font-bold">กำลังประมวลผล...</p>
-              </div>
-            ) : searchMovies.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 w-full">
-                {searchMovies.map((item) => {
-                  const title = item.media_type === 'tv' ? item.name : item.title;
-                  const originalTitle = item.media_type === 'tv' ? item.original_name : item.original_title;
-                  const year = item.media_type === 'tv' ? item.first_air_date?.substring(0, 4) : item.release_date?.substring(0, 4);
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full justify-center">
+              {searchMovies.slice(0, 3).map((item) => {
+                const title = item.title;
+                const originalTitle = item.original_title;
+                const year = item.release_date?.substring(0, 4);
 
-                  return (
-                    <div key={item.id} className="flex flex-col h-full group bg-white rounded-2xl p-2.5 shadow-[0_4px_15px_rgba(33,1,0,0.03)] border border-[#FECE79]/30 hover:shadow-md transition-shadow">
-                      <div onClick={() => handleMovieClick(item)} className="relative w-full aspect-3/4 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
-                        <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-2 right-2 bg-[#210100]/80 backdrop-blur-sm text-[#FECE79] text-[10px] md:text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 z-10">
-                          ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
-                        </div>
-                        <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
-                          
-                          {/* 🟢 แก้ไข: ปุ่ม Dislike */}
-                          <button 
-                            onClick={(e) => handleVote(e, item, 'dislike')} 
-                            className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
-                              checkIsDisliked(item.id) 
-                                ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
-                                : 'bg-[#8C0902]/90 text-white hover:bg-[#8C0902] hover:scale-110'
-                            }`}
-                          >
-                            <svg className="w-4 h-4 md:w-5 md:h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
-                          </button>
-
-                          {/* 🟢 แก้ไข: ปุ่ม Like */}
-                          <button 
-                            onClick={(e) => handleVote(e, item, 'like')} 
-                            className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
-                              checkIsLiked(item.id) 
-                                ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
-                                : 'bg-[#E6A341]/90 text-[#210100] hover:bg-[#E6A341] hover:scale-110'
-                            }`}
-                          >
-                            <svg className="w-4 h-4 md:w-5 md:h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
-                          </button>
-                          
-                        </div>
+                return (
+                  <div key={item.id} className="flex flex-col h-full group bg-white rounded-2xl p-3 shadow-[0_4px_20px_rgba(33,1,0,0.04)] border border-[#FECE79]/40 hover:shadow-md transition-shadow">
+                    <div onClick={() => handleMovieClick(item)} className="relative w-full aspect-3/4 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
+                      <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute top-2 right-2 bg-white/95 text-[#8C0902] text-[10px] md:text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm z-10 border border-[#FECE79]/30">
+                        ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
                       </div>
-                      <div className="flex flex-col grow px-1">
-                        <h3 className="font-extrabold text-[#210100] text-[13px] md:text-sm leading-snug line-clamp-2" title={title}>{title}</h3>
-                        <p className="text-[#210100]/50 text-[10px] md:text-xs truncate italic mt-0.5" title={originalTitle}>{originalTitle}</p>
-                        <p className="text-[#B14A36] font-bold text-[11px] md:text-xs mt-1.5 mb-3">{year || "N/A"}</p>
-                        <div className="mt-auto pt-2 border-t border-[#FECE79]/30 w-full">
-                          <button onClick={() => handleMovieClick(item)} className="w-full text-[#8C0902] font-extrabold text-xs text-center hover:text-[#B14A36] transition-colors py-1">ดูรายละเอียด</button>
-                        </div>
+                      
+                      {/* ปุ่ม Like / Dislike (สไตล์หน้า Home) */}
+                      <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
+                        <button 
+                          onClick={(e) => handleVote(e, item, 'dislike')} 
+                          className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
+                            checkIsDisliked(item.id) 
+                              ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
+                              : 'bg-[#8C0902]/90 text-white hover:bg-[#8C0902] hover:scale-110'
+                          }`}
+                        >
+                          <svg className="w-4 h-4 md:w-5 md:h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+                        </button>
+                        <button 
+                          onClick={(e) => handleVote(e, item, 'like')} 
+                          className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${
+                            checkIsLiked(item.id) 
+                              ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
+                              : 'bg-[#E6A341]/90 text-[#210100] hover:bg-[#E6A341] hover:scale-110'
+                          }`}
+                        >
+                          <svg className="w-4 h-4 md:w-5 md:h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center flex-1 w-full text-center">
-                <div className="w-16 h-16 bg-[#FECE79]/20 rounded-full flex items-center justify-center mb-4 border-2 border-[#FECE79]/50">
-                  <svg className="w-8 h-8 text-[#B14A36]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-[#210100] mb-2">ไม่พบผลลัพธ์</h3>
-                <p className="text-[#B14A36]">ลองเปลี่ยนคำค้นหาเป็นชื่อเรื่องอื่น หรือแนวหนังที่ใกล้เคียงดูนะ</p>
-              </div>
-            )}
+                    
+                    <div className="flex flex-col grow px-1">
+                      <h3 className="font-extrabold text-[#210100] text-sm md:text-base leading-snug line-clamp-1" title={title}>{title}</h3>
+                      <p className="text-[#210100]/50 text-[10px] md:text-xs truncate italic mt-0.5" title={originalTitle}>{originalTitle}</p>
+                      <p className="text-[#B14A36] font-bold text-xs mt-1.5 mb-3">{year || "N/A"}</p>
+                      <div className="mt-auto pt-2 border-t border-[#FECE79]/30 w-full">
+                        <button onClick={() => handleMovieClick(item)} className="w-full bg-[#8C0902]/5 text-[#8C0902] font-black text-xs text-center hover:bg-[#8C0902] hover:text-white rounded-xl transition-all py-2">ดูรายละเอียดเจาะลึก</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : hasSearched && (
+          <div className="flex flex-col items-center justify-center py-12 text-center w-full">
+            <div className="w-16 h-16 bg-[#FECE79]/20 rounded-full flex items-center justify-center mb-4 border-2 border-[#FECE79]/50">
+              <svg className="w-8 h-8 text-[#B14A36]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <h3 className="text-lg font-black text-[#210100] mb-1">ไม่พบเนื้อหาที่ตรงเงื่อนไข</h3>
+            <p className="text-[#B14A36] text-sm">ลองปรับคำอธิบายให้สั้นลง หรือบอกแนวที่อยากดูให้ชัดขึ้นดีไหมคะ?</p>
           </div>
         )}
       </div>
 
-      {/* Fixed Search Bar */}
+      {/* Fixed Search Input Bar */}
       <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-linear-to-t from-[#FFFDF9] via-[#FFFDF9] to-transparent z-30 flex justify-center pointer-events-none">
         <form onSubmit={handleSearch} className="relative w-full max-w-3xl pointer-events-auto group">
           <input 
             type="text" 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
-            placeholder="ฉันจะช่วยคุณได้อย่างไรบ้าง ตอนนี้..." 
-            className="w-full bg-white border-2 border-[#FECE79] focus:border-[#8C0902] rounded-full pl-6 pr-16 py-4 text-[#210100] font-medium outline-none transition-all shadow-[0_10px_40px_rgba(0,0,0,0.08)] focus:shadow-[0_10px_40px_rgba(140,9,2,0.15)] text-lg" 
+            placeholder="พิมพ์คุยกับ AI เพื่อหาหนังที่ใช่ เช่น 'อยากได้หนังแอคชั่นไซไฟมันส์ๆ ดึงคะแนนสะสมมาคิดด้วย'..." 
+            className="w-full bg-white border-2 border-[#FECE79] focus:border-[#8C0902] rounded-full pl-6 pr-16 py-4 text-[#210100] font-medium outline-none transition-all shadow-[0_10px_40px_rgba(0,0,0,0.06)] focus:shadow-[0_10px_40px_rgba(140,9,2,0.12)] text-base md:text-lg" 
           />
           <button 
             type="submit" 
@@ -344,7 +379,7 @@ export default function MovieSearch({ currentUser }) {
         </form>
       </div>
 
-      {/* Modal ป็อปอัป แก้ไขให้เห็นเรื่องย่อครบ ไม่บัง */}
+      {/* Immersive Overlay Modal (คงความสามารถเดิมไว้ครบถ้วน) */}
       {selectedMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-[#210100]/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">
@@ -352,16 +387,16 @@ export default function MovieSearch({ currentUser }) {
               <svg className="w-5 h-5 text-[#8C0902]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
             <div className="w-full md:w-[35%] h-64 md:h-auto shrink-0 relative bg-[#FECE79]/20">
-              <img src={`https://image.tmdb.org/t/p/w500${selectedMovie.poster_path}`} alt={selectedMovie.title || selectedMovie.name} className="w-full h-full object-cover" />
+              <img src={`https://image.tmdb.org/t/p/w500${selectedMovie.poster_path}`} alt={selectedMovie.title} className="w-full h-full object-cover" />
             </div>
             
             <div className="w-full md:w-[65%] p-6 md:p-8 flex flex-col overflow-y-auto custom-scrollbar">
               <div className="mb-4">
-                <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">{selectedMovie.media_type === 'tv' ? 'TV Series' : 'Movie'}</span>
-                <h2 className="text-3xl md:text-4xl font-black text-[#210100] leading-tight mb-1">{selectedMovie.title || selectedMovie.name}</h2>
-                <p className="text-[#210100]/60 text-sm italic mb-3">{selectedMovie.original_title || selectedMovie.original_name}</p>
+                <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">Movie</span>
+                <h2 className="text-3xl md:text-4xl font-black text-[#210100] leading-tight mb-1">{selectedMovie.title}</h2>
+                <p className="text-[#210100]/60 text-sm italic mb-3">{selectedMovie.original_title}</p>
                 <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-[#B14A36]">
-                  <span>{selectedMovie.release_date?.substring(0,4) || selectedMovie.first_air_date?.substring(0,4) || "N/A"}</span><span>•</span>
+                  <span>{selectedMovie.release_date?.substring(0,4) || "N/A"}</span><span>•</span>
                   <span>{detailedMovie ? formatRuntime(detailedMovie) : "กำลังคำนวณเวลา..."}</span><span>•</span>
                   <span className="flex items-center gap-1 bg-[#E6A341]/20 px-2 py-0.5 rounded text-[#8C0902]">
                     ★ {selectedMovie.vote_average?.toFixed(1) || "N/A"}
@@ -376,7 +411,7 @@ export default function MovieSearch({ currentUser }) {
               {detailedMovie && (
                 <div className="mb-6 bg-[#FECE79]/10 p-4 rounded-xl border border-[#FECE79]/30">
                   <p className="text-xs md:text-sm text-[#210100] mb-2"><span className="font-extrabold text-[#8C0902]">หมวดหมู่:</span> {detailedMovie.genreNames}</p>
-                  {selectedMovie.media_type !== 'tv' && <p className="text-xs md:text-sm text-[#210100] mb-3"><span className="font-extrabold text-[#8C0902]">ผู้กำกับ:</span> {detailedMovie.directorName}</p>}
+                  <p className="text-xs md:text-sm text-[#210100] mb-3"><span className="font-extrabold text-[#8C0902]">ผู้กำกับ:</span> {detailedMovie.directorName}</p>
                   <p className="text-xs md:text-sm font-extrabold text-[#8C0902] mb-2">นักแสดงนำ:</p>
                   <div className="flex overflow-x-auto gap-3 pb-2 scrollbar-hide">
                     {detailedMovie.cast.map(actor => (
@@ -396,6 +431,7 @@ export default function MovieSearch({ currentUser }) {
                   </div>
                 </div>
               )}
+
               <div className="mt-auto pt-4 border-t border-[#FECE79]/40">
                 <h4 className="text-xs font-bold text-[#8C0902] mb-3">ช่องทางการรับชม:</h4>
                 <div className="flex flex-wrap gap-2 mb-6">
@@ -420,7 +456,7 @@ export default function MovieSearch({ currentUser }) {
                     </>
                   ) : <p className="text-xs text-[#E6A341] animate-pulse">กำลังตรวจสอบช่องทางรับชม...</p>}
                 </div>
-                <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent((selectedMovie.title || selectedMovie.name) + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
+                <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(selectedMovie.title + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>ดูตัวอย่าง Trailer
                 </a>
               </div>
