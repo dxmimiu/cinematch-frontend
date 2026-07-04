@@ -14,8 +14,11 @@ export default function MovieSearch({ currentUser }) {
   const [searchMovies, setSearchMovies] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
   // 🤖 เพิ่ม State สำหรับเก็บข้อความตอบกลับจากแชทบอท AI
   const [aiMessage, setAiMessage] = useState('สวัสดีค่ะ! ฉันคือ CINE AI ผู้ช่วยเลือกหนังอัจฉริยะของคุณ ลองพิมพ์บอกสไตล์ภาพยนตร์หรือความรู้สึกในตอนนี้ให้ฉันฟังสิคะ');
+  // 🟢 เพิ่ม State นี้สำหรับจำบทสนทนา
+  const [conversationId, setConversationId] = useState(null);
 
   const [likedMovies, setLikedMovies] = useState([]);
   const [dislikedMovies, setDislikedMovies] = useState([]);
@@ -140,6 +143,10 @@ export default function MovieSearch({ currentUser }) {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
+    // เก็บคำถามไว้ก่อน แล้วล้างช่องแชทเพื่อให้ผู้ใช้พิมพ์ตอบได้ง่ายขึ้น
+    const currentQuery = searchQuery;
+    setSearchQuery(''); 
+    
     setIsSearching(true);
     setHasSearched(true);
     setSearchMovies([]);
@@ -147,36 +154,34 @@ export default function MovieSearch({ currentUser }) {
     const token = localStorage.getItem('cinematch_token');
 
     try {
-      // 1. ยิงหาหลังบ้านขอดึงผลลัพธ์จาก AI Agent (ส่ง Preference ไปคิดร่วมด้วย)
+      // 🟢 แนบ conversation_id ไปด้วย
       const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
-        { query: searchQuery },
+        { query: currentQuery, conversation_id: conversationId }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // แสดงข้อความอธิบายแบบสั้นกระชับจาก AI
-      setAiMessage(res.data.ai_message || "นี่คือภาพยนตร์ที่ฉันเลือกมาแนะนำให้คุณค่ะ:");
+      setAiMessage(res.data.ai_message || "...");
+      
+      // 🟢 รับรหัสจำบทสนทนามาเก็บไว้ใช้รอบถัดไป
+      if (res.data.conversation_id) {
+        setConversationId(res.data.conversation_id);
+      }
 
       const movieIds = res.data.recommended_movie_ids || [];
 
       if (movieIds.length > 0) {
-        // 2. [Integration] นำคำตอบของ AI (Movie IDs) ไป Map หาข้อมูลดิบจาก TMDB เพื่อวาดการ์ด
+        // [Integration] นำคำตอบของ AI ไป Map หาข้อมูลดิบจาก TMDB
         const API_KEY = "181edc5801db6678de6ccb2864149a6a";
         const fetchedDetails = await Promise.all(
-          movieIds.slice(0, 3).map(async (id) => { // บังคับตัดเอาแค่ 3 เรื่องชัวร์ๆ
+          movieIds.slice(0, 3).map(async (id) => { 
             try {
               const movieRes = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
               const movieData = await movieRes.json();
               if (movieData.id && movieData.poster_path) {
-                return {
-                  ...movieData,
-                  media_type: 'movie',
-                  genre_ids: movieData.genres ? movieData.genres.map(g => g.id) : []
-                };
+                return { ...movieData, media_type: 'movie', genre_ids: movieData.genres ? movieData.genres.map(g => g.id) : [] };
               }
               return null;
-            } catch (err) {
-              return null;
-            }
+            } catch (err) { return null; }
           })
         );
         setSearchMovies(fetchedDetails.filter(m => m !== null));
@@ -184,7 +189,7 @@ export default function MovieSearch({ currentUser }) {
     } catch (error) {
       console.error("AI Routing Fail:", error);
       toast.error("ปัญญาประดิษฐ์ประมวลผลลัพธ์ไม่สำเร็จ");
-      setAiMessage("ระบบคิดรวบยอดขัดข้องชั่วคราว ลองปรับลดคีย์เวิร์ดแล้วค้นหาใหม่อีกครั้งนะคะ");
+      setAiMessage("ระบบคิดรวบยอดขัดข้องชั่วคราว ลองพิมพ์ใหม่อีกครั้งนะคะ");
     } finally {
       setIsSearching(false);
     }
@@ -339,12 +344,13 @@ export default function MovieSearch({ currentUser }) {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center w-full">
-                <div className="w-16 h-16 bg-[#FECE79]/20 rounded-full flex items-center justify-center mb-4 border-2 border-[#FECE79]/50">
-                  <svg className="w-8 h-8 text-[#B14A36]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              // 🟢 ปรับ UI ตรงนี้: ถ้าค้นหาแล้วไม่มีหนัง (แสดงว่า AI กำลังถามกลับ) ให้โชว์บล็อกนี้
+              <div className="flex flex-col items-center justify-center py-12 text-center w-full animate-fade-in">
+                <div className="w-16 h-16 bg-[#FECE79]/20 rounded-full flex items-center justify-center mb-4 border-2 border-[#FECE79]/50 shadow-inner">
+                  <svg className="w-8 h-8 text-[#E6A341] animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                 </div>
-                <h3 className="text-xl font-bold text-[#210100] mb-2">ไม่พบผลลัพธ์</h3>
-                <p className="text-[#B14A36]">ลองอธิบายอารมณ์หรือแนวหนังในรูปแบบอื่นดูนะคะ</p>
+                <h3 className="text-xl font-bold text-[#210100] mb-2">CINE AI กำลังรอคำตอบของคุณค่ะ</h3>
+                <p className="text-[#B14A36]">อ่านข้อความทักทายด้านบน แล้วพิมพ์ตอบในช่องด้านล่างได้เลยนะคะ 👇</p>
               </div>
             )}
           </div>
