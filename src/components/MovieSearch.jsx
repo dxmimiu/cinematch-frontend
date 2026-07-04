@@ -175,15 +175,28 @@ export default function MovieSearch({ currentUser }) {
 
         // ถ้าระบบส่ง ID หนังกลับมา (ไม่ใช่การถามกลับเพื่อขอข้อมูลเพิ่ม) ให้ทำระบบประมวลผลต่อ
         if (movieIds.length > 0) {
-            const API_KEY = "YOUR_TMDB_API_KEY";
-            const fetchedDetails = await Promise.all(
-                movieIds.slice(0, 3).map(async (id) => {
-                    try {
-                        const movieRes = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
-                        return await movieRes.json();
-                    } catch (err) { return null; }
-                })
-            );
+        // 🟢 2. ให้ระบบลองค้นหาทั้งแบบ Movie และ TV Series
+        const API_KEY = "181edc5801db6678de6ccb2864149a6a";
+        const fetchedDetails = await Promise.all(
+          movieIds.slice(0, 3).map(async (id) => { 
+            try {
+              let res = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
+              let data = await res.json();
+              
+              // ถ้าหาแบบภาพยนตร์ไม่เจอ (404) ให้สลับไปหา API แบบทีวีซีรีส์แทน
+              if (data.success === false && data.status_code === 34) {
+                 res = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${API_KEY}&language=th-TH`);
+                 data = await res.json();
+                 if(data.id) {
+                     return { ...data, media_type: 'tv', genre_ids: data.genres ? data.genres.map(g => g.id) : [] };
+                 }
+              } else if (data.id) {
+                 return { ...data, media_type: 'movie', genre_ids: data.genres ? data.genres.map(g => g.id) : [] };
+              }
+              return null;
+            } catch (err) { return null; }
+          })
+        );
             // นำข้อมูลดิบจาก TMDB ไปอัปเดต State เพื่อวาดเป็นการ์ดภาพยนตร์ 3 ใบต่อไป
             setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
         }

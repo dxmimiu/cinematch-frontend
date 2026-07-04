@@ -11,27 +11,29 @@ export default function Collection() {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [detailedMovie, setDetailedMovie] = useState(null);
 
-const fetchTmdbData = async (items) => {
+  const fetchTmdbData = async (items) => {
     if (!items || items.length === 0) return [];
     
     const API_KEY = "181edc5801db6678de6ccb2864149a6a";
     const promises = items.map(async (item) => {
       try {
-        // 1. ลองดึงแบบ Movie ก่อน
-        let movieRes = await fetch(`https://api.themoviedb.org/3/movie/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
-        let movieData = await movieRes.json();
+        // 🟢 ใช้ media_type จากฐานข้อมูลโดยตรง ถ้าไม่มีให้เดาว่าเป็น movie ไว้ก่อน
+        const type = item.media_type === 'tv' ? 'tv' : 'movie';
         
-        // ตรวจสอบว่าได้ข้อมูลหนังที่ถูกต้องจริงๆ (ต้องมี title หรือ poster_path และไม่มี error)
-        if (movieData && movieData.title && movieData.success !== false) {
-          return { ...movieData, film_id: item.film_id, media_type: 'movie' };
+        let res = await fetch(`https://api.themoviedb.org/3/${type}/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
+        let data = await res.json();
+        
+        if (data && (data.title || data.name) && data.success !== false) {
+          return { ...data, film_id: item.film_id, media_type: type };
         }
         
-        // 2. ถ้าไม่ใช่หนัง หรือดึงแล้วไม่มีชื่อเรื่อง ให้เปลี่ยนไปดึงแบบ TV Series ทันที
-        let tvRes = await fetch(`https://api.themoviedb.org/3/tv/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
-        let tvData = await tvRes.json();
+        // แผนสำรอง: เผื่อฐานข้อมูลเซฟประเภทผิด ก็ให้ลองดึงอีกประเภทนึงแทน
+        const fallbackType = type === 'movie' ? 'tv' : 'movie';
+        let fallbackRes = await fetch(`https://api.themoviedb.org/3/${fallbackType}/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
+        let fallbackData = await fallbackRes.json();
         
-        if (tvData && tvData.name && tvData.success !== false) {
-          return { ...tvData, film_id: item.film_id, media_type: 'tv' };
+        if (fallbackData && (fallbackData.title || fallbackData.name) && fallbackData.success !== false) {
+          return { ...fallbackData, film_id: item.film_id, media_type: fallbackType };
         }
         
         return null; 
@@ -51,17 +53,16 @@ const fetchTmdbData = async (items) => {
     try {
       const res = await axios.get('https://cinematch-backend-hdvz.onrender.com/api/likes', { headers: { Authorization: `Bearer ${token}` } });
       
-      // ✅ แก้ไข: ข้อมูลที่ได้มาคือ Array ก้อนเดียว เราต้องแยกกรองเองว่าอันไหน Like อันไหน Dislike
       const allLikes = res.data || [];
       
-      // คัดแยกและแปลงฟิลด์ movie_id ให้กลายเป็น film_id เพื่อให้ตรงกับโครงสร้างเก่า
+      // 🟢 แก้ไข: แนบ media_type ไปด้วยตอนกรองข้อมูล เพื่อไม่ให้ข้อมูลหาย
       const likedList = allLikes
         .filter(item => item.action === 'like')
-        .map(item => ({ film_id: item.movie_id }));
+        .map(item => ({ film_id: item.movie_id, media_type: item.media_type }));
         
       const dislikedList = allLikes
         .filter(item => item.action === 'dislike')
-        .map(item => ({ film_id: item.movie_id }));
+        .map(item => ({ film_id: item.movie_id, media_type: item.media_type }));
       
       const likedWithDetails = await fetchTmdbData(likedList);
       const dislikedWithDetails = await fetchTmdbData(dislikedList);
@@ -80,10 +81,6 @@ const fetchTmdbData = async (items) => {
   const removeMovie = async (film_id) => {
     const token = localStorage.getItem('cinematch_token');
     try {
-      // ✅ แก้ไข: อิงตาม route จริง ถ้าจะยกเลิก เราต้องส่งค่า action เป็นการเคลียร์หรือลบทิ้ง
-      // ใน server.js ที่ให้ไป ตอนนี้รองรับการ INSERT OR REPLACE 
-      // เพื่อความง่าย เราใช้การยิง 'dislike' ทับ หรือคุณอาจจะต้องเพิ่ม endpoint ลบ 
-      // แต่เบื้องต้น ผมจะปรับให้มันยิง 'remove' เพื่อเปลี่ยนสถานะ
       await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
         { movie_id: film_id, action: 'remove' }, 
         { headers: { Authorization: `Bearer ${token}` } }
@@ -101,7 +98,8 @@ const fetchTmdbData = async (items) => {
 
     try {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-      const type = item.media_type;
+      // 🟢 ป้องกันกรณีไม่มี media_type
+      const type = item.media_type || (item.first_air_date ? 'tv' : 'movie');
       
       const thRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id || item.film_id}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
       const thData = await thRes.json();
