@@ -139,59 +139,61 @@ export default function MovieSearch({ currentUser }) {
   const checkIsLiked = (id) => likedMovies.some(m => m.film_id === id || m.id === id);
   const checkIsDisliked = (id) => dislikedMovies.some(m => m.film_id === id || m.id === id);
 
+  // ตัวอย่างฟังก์ชันเรียกใช้งานฝั่ง Frontend (React)
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // เก็บคำถามไว้ก่อน แล้วล้างช่องแชทเพื่อให้ผู้ใช้พิมพ์ตอบได้ง่ายขึ้น
     const currentQuery = searchQuery;
     setSearchQuery(''); 
-    
     setIsSearching(true);
     setHasSearched(true);
     setSearchMovies([]);
 
-    const token = localStorage.getItem('cinematch_token');
+    const token = localStorage.getItem('cinematch_token'); // ดึง Token ยืนยันตัวตน
 
     try {
-      // 🟢 แนบ conversation_id ไปด้วย
-      const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
-        { query: currentQuery, conversation_id: conversationId }, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setAiMessage(res.data.ai_message || "...");
-      
-      // 🟢 รับรหัสจำบทสนทนามาเก็บไว้ใช้รอบถัดไป
-      if (res.data.conversation_id) {
-        setConversationId(res.data.conversation_id);
-      }
-
-      const movieIds = res.data.recommended_movie_ids || [];
-
-      if (movieIds.length > 0) {
-        // [Integration] นำคำตอบของ AI ไป Map หาข้อมูลดิบจาก TMDB
-        const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-        const fetchedDetails = await Promise.all(
-          movieIds.slice(0, 3).map(async (id) => { 
-            try {
-              const movieRes = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
-              const movieData = await movieRes.json();
-              if (movieData.id && movieData.poster_path) {
-                return { ...movieData, media_type: 'movie', genre_ids: movieData.genres ? movieData.genres.map(g => g.id) : [] };
-              }
-              return null;
-            } catch (err) { return null; }
-          })
+        // เรียกไปยังหลังบ้านของคุณเองเพื่อความปลอดภัยสูงสุด
+        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
+            { 
+                query: currentQuery, 
+                conversation_id: conversationId // ส่งรหัสจำบทสนทนา (Multi-turn chat)
+            }, 
+            { 
+                headers: { Authorization: `Bearer ${token}` } 
+            }
         );
-        setSearchMovies(fetchedDetails.filter(m => m !== null));
-      }
+
+        // นำข้อความพูดคุย/คำถามที่ตอบกลับมาไปอัปเดตในกล่องแชท CINE AI
+        setAiMessage(res.data.ai_message || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
+        
+        if (res.data.conversation_id) {
+            setConversationId(res.data.conversation_id); // บันทึกรหัสจำบทสนทนาไว้ใช้ในรอบถัดไป
+        }
+
+        const movieIds = res.data.recommended_movie_ids || [];
+
+        // ถ้าระบบส่ง ID หนังกลับมา (ไม่ใช่การถามกลับเพื่อขอข้อมูลเพิ่ม) ให้ทำระบบประมวลผลต่อ
+        if (movieIds.length > 0) {
+            const API_KEY = "YOUR_TMDB_API_KEY";
+            const fetchedDetails = await Promise.all(
+                movieIds.slice(0, 3).map(async (id) => {
+                    try {
+                        const movieRes = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
+                        return await movieRes.json();
+                    } catch (err) { return null; }
+                })
+            );
+            // นำข้อมูลดิบจาก TMDB ไปอัปเดต State เพื่อวาดเป็นการ์ดภาพยนตร์ 3 ใบต่อไป
+            setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
+        }
+
     } catch (error) {
-      console.error("AI Routing Fail:", error);
-      toast.error("ปัญญาประดิษฐ์ประมวลผลลัพธ์ไม่สำเร็จ");
-      setAiMessage("ระบบคิดรวบยอดขัดข้องชั่วคราว ลองพิมพ์ใหม่อีกครั้งนะคะ");
+        console.error("AI Routing Fail:", error);
+        toast.error("ปัญญาประดิษฐ์ประมวลผลลัพธ์ไม่สำเร็จ");
+        setAiMessage("ระบบเกิดข้อผิดพลาดชั่วคราว ลองพิมพ์ใหม่อีกครั้งนะคะ");
     } finally {
-      setIsSearching(false);
+        setIsSearching(false);
     }
   };
 
