@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 
 import { Toaster } from 'react-hot-toast'; 
@@ -15,7 +15,8 @@ import Auth from './components/Auth';
 import Collection from './components/Collection';
 
 export default function App() {
-  const [step, setStep] = useState(-2); 
+  // 🟢 ตั้งค่าเริ่มต้นเป็น -1 เพื่อให้แสดงหน้าล็อกอินทันที ไม่มีการยิงตรวจเช็ค Token ค้างเก่า
+  const [step, setStep] = useState(-1); 
   const [currentUser, setCurrentUser] = useState(null);
 
   const [userPreferences, setUserPreferences] = useState(null);
@@ -24,39 +25,12 @@ export default function App() {
   const [roomPin, setRoomPin] = useState("");   
 
   const routeUserFlow = (user) => {
-    // ปรับให้รองรับกรณีที่คอลัมน์ has_completed_quiz อาจจะเป็น undefined
     if (user.has_completed_quiz === 0 || user.has_completed_quiz === undefined) {
       setStep(0); 
     } else {
       setStep(0.5); 
     }
   };
-
-  useEffect(() => {
-    const token = localStorage.getItem('cinematch_token');
-    if (!token) {
-      setStep(-1); 
-      return;
-    }
-
-    axios.get('https://cinematch-backend-hdvz.onrender.com/api/verify', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => {
-      // 🟢 Sliding Expiration: ถ้าเซิร์ฟเวอร์ส่ง Token ใบใหม่ (ที่ต่ออายุแล้ว 3 วัน) กลับมา ให้เซฟทับเลย
-      if (res.data.token) {
-        localStorage.setItem('cinematch_token', res.data.token);
-      }
-      
-      setCurrentUser(res.data.user);
-      routeUserFlow(res.data.user);
-    })
-    .catch(err => {
-      console.error("Auto-login failed:", err);
-      localStorage.removeItem('cinematch_token'); 
-      setStep(-1); 
-    });
-  }, []);
 
   // ✅ รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
   const handleLoginSuccess = (user, authType) => {
@@ -81,18 +55,14 @@ export default function App() {
     setUserPreferences(answers);
     const token = localStorage.getItem('cinematch_token');
     
-    // พยายามบันทึกสถานะลงหลังบ้าน
+    // บันทึกสถานะลงหลังบ้าน
     axios.post('https://cinematch-backend-hdvz.onrender.com/api/users/complete-quiz', {}, {
       headers: { Authorization: `Bearer ${token}` }
     })
     .finally(() => {
-      // ✅ ใช้ finally เพื่อให้ระบบพาวาร์ปไปหน้า This or That (0.5) ทันที
-      // แม้ว่า Backend จะยังไม่มี API /complete-quiz ก็ตาม (กันพรีเซนต์หน้าขาว)
       setStep(0.5); 
     });
   };
-
-  if (step === -2) return <div className="min-h-screen bg-[#FFFDF9] flex justify-center items-center"><div className="w-10 h-10 border-4 border-[#8C0902] border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
     <div className="min-h-screen bg-[#FFFDF9] font-sans antialiased text-[#210100]">
