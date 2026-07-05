@@ -2,7 +2,7 @@
 
 // แนะนำให้เก็บ API Key ไว้ในตัวแปร Environment (เช่น .env) เพื่อความปลอดภัย
 // ตัวอย่างสำหรับ Vite: const DIFY_API_KEY = import.meta.env.VITE_DIFY_API_KEY;
-const DIFY_API_KEY = "ใส่_API_KEY_ของคุณที่นี่"; 
+const DIFY_API_KEY = "app-sc7f4lP0zQaKRZoTAcMMoWPF"; 
 const DIFY_API_URL = "https://api.dify.ai/v1/chat-messages";
 
 /**
