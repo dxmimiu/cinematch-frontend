@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown';
 import toast from 'react-hot-toast';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -296,9 +297,22 @@ export default function MovieSearch({ currentUser }) {
           </div>
           <div className="flex flex-col gap-1.5 pt-1">
             <h4 className="text-xs font-black uppercase text-[#8C0902] tracking-wider">CINE AI Assistant</h4>
-            <p className="text-[#210100] text-sm md:text-base font-medium leading-relaxed whitespace-pre-line">
-              {aiMessage}
-            </p>
+            <div className="text-[#210100] text-sm md:text-base font-medium leading-relaxed whitespace-pre-line w-full overflow-hidden">
+              <ReactMarkdown
+                components={{
+                  // ตั้งค่าให้รูปภาพที่ถูกดึงมามีขนาดกำลังดีและขอบมน
+                  img: ({node, ...props}) => (
+                    <img {...props} className="w-24 md:w-32 h-auto rounded-lg shadow-md my-3 border border-[#FECE79]/30" />
+                  ),
+                  // ตั้งค่าให้ตัวหนังสือที่ครอบด้วย **...** เป็นตัวหนาและสีโดดเด่นขึ้น
+                  strong: ({node, ...props}) => (
+                    <strong {...props} className="font-extrabold text-[#8C0902]" />
+                  )
+                }}
+              >
+                {aiMessage}
+              </ReactMarkdown>
+            </div>
           </div>
         </div>
 
