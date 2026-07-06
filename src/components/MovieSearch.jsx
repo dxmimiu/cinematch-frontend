@@ -164,15 +164,26 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(textPart || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
 
         // ดึงเฉพาะก้อน JSON
-        const jsonMatch = rawText.match(/```json([\s\S]*?)```/);
+        const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
         let aiMovies = [];
 
-        if (jsonMatch && jsonMatch[1]) {
-            try {
-                aiMovies = JSON.parse(jsonMatch[1]);
-            } catch (err) {
-                console.error("Error parsing AI JSON", err);
+        try {
+          if (jsonMatch?.[1]) {
+            aiMovies = JSON.parse(jsonMatch[1].trim());
+          } else {
+            // รองรับกรณีที่ Dify ส่ง JSON array มาโดยไม่มี markdown code block
+            const arrayMatch = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            if (arrayMatch?.[0]) {
+              aiMovies = JSON.parse(arrayMatch[0]);
             }
+          }
+        } catch (err) {
+          console.error("Error parsing AI JSON", err, rawText);
+          aiMovies = [];
+        }
+
+        if (!Array.isArray(aiMovies)) {
+          aiMovies = [];
         }
 
         // 🟢 2. หาก AI ตอบกลับเป็น JSON มีรายชื่อหนัง
@@ -182,11 +193,11 @@ export default function MovieSearch({ currentUser }) {
                 aiMovies.slice(0, 3).map(async (aiMovie) => { 
                     const id = aiMovie.id;
                     try {
-                        let res = await fetch(`[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){id}?api_key=${API_KEY}&language=th-TH`);
+                        let res = await fetch(`https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH`);
                         let data = await res.json();
                         
                         if (data.success === false && data.status_code === 34) {
-                            res = await fetch(`[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){id}?api_key=${API_KEY}&language=th-TH`);
+                            res = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${API_KEY}&language=th-TH`);
                             data = await res.json();
                             if(data.id) {
                                 // 🟢 แนบ reason จาก AI เข้าไปด้วย
@@ -218,12 +229,12 @@ export default function MovieSearch({ currentUser }) {
     try {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
       const type = item.media_type || (item.first_air_date ? 'tv' : 'movie');
-      const thRes = await fetch(`[https://api.themoviedb.org/3/$](https://api.themoviedb.org/3/$){type}/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
+      const thRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
       const thData = await thRes.json();
 
       let finalOverview = thData.overview;
       if (!finalOverview) {
-        const enRes = await fetch(`[https://api.themoviedb.org/3/$](https://api.themoviedb.org/3/$){type}/${item.id}?api_key=${API_KEY}&language=en-US`);
+        const enRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${API_KEY}&language=en-US`);
         const enData = await enRes.json();
         finalOverview = enData.overview || "ไม่มีเรื่องย่อสำหรับเนื้อหานี้";
       }
@@ -331,7 +342,7 @@ export default function MovieSearch({ currentUser }) {
                     return (
                       <div key={item.id} className="flex flex-col h-full group bg-white rounded-2xl p-3 shadow-[0_4px_20px_rgba(33,1,0,0.04)] border border-[#FECE79]/40 hover:shadow-md transition-shadow">
                         <div onClick={() => handleMovieClick(item)} className="relative w-full aspect-3/4 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
-                          <img src={`[https://image.tmdb.org/t/p/w500$](https://image.tmdb.org/t/p/w500$){item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           <div className="absolute top-2 right-2 bg-white/95 text-[#8C0902] text-[10px] md:text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm z-10 border border-[#FECE79]/30">
                             ★ {item.vote_average ? item.vote_average.toFixed(1) : "N/A"}
                           </div>
@@ -408,16 +419,22 @@ export default function MovieSearch({ currentUser }) {
               <svg className="w-5 h-5 text-[#8C0902]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
             <div className="w-full md:w-[35%] h-64 md:h-auto shrink-0 relative bg-[#FECE79]/20">
-              <img src={`[https://image.tmdb.org/t/p/w500$](https://image.tmdb.org/t/p/w500$){selectedMovie.poster_path}`} alt={selectedMovie.title} className="w-full h-full object-cover" />
+              <img src={`https://image.tmdb.org/t/p/w500${selectedMovie.poster_path}`} alt={selectedMovie.title || selectedMovie.name} className="w-full h-full object-cover" />
             </div>
             
             <div className="w-full md:w-[65%] p-6 md:p-8 flex flex-col overflow-y-auto custom-scrollbar">
               <div className="mb-4">
-                <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">Movie</span>
-                <h2 className="text-3xl md:text-4xl font-black text-[#210100] leading-tight mb-1">{selectedMovie.title}</h2>
-                <p className="text-[#210100]/60 text-sm italic mb-3">{selectedMovie.original_title}</p>
+                <span className="inline-block bg-[#FECE79]/30 text-[#8C0902] text-xs font-bold px-2 py-1 rounded-md mb-2">
+                  {selectedMovie.media_type === 'tv' ? 'TV Series' : 'Movie'}
+                </span>
+                <h2 className="text-3xl md:text-4xl font-black text-[#210100] leading-tight mb-1">
+                  {selectedMovie.title || selectedMovie.name}
+                </h2>
+                <p className="text-[#210100]/60 text-sm italic mb-3">
+                  {selectedMovie.original_title || selectedMovie.original_name}
+                </p>
                 <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-[#B14A36]">
-                  <span>{selectedMovie.release_date?.substring(0,4) || "N/A"}</span><span>•</span>
+                  <span>{selectedMovie.release_date?.substring(0,4) || selectedMovie.first_air_date?.substring(0,4) || "N/A"}</span><span>•</span>
                   <span>{detailedMovie ? formatRuntime(detailedMovie) : "กำลังคำนวณเวลา..."}</span><span>•</span>
                   <span className="flex items-center gap-1 bg-[#E6A341]/20 px-2 py-0.5 rounded text-[#8C0902]">
                     ★ {selectedMovie.vote_average?.toFixed(1) || "N/A"}
@@ -439,7 +456,7 @@ export default function MovieSearch({ currentUser }) {
                       <div key={actor.id} className="flex flex-col items-center w-16 shrink-0 group">
                         <div className="w-12 h-12 rounded-full overflow-hidden bg-white mb-1.5 border border-[#FECE79] shadow-sm group-hover:border-[#E6A341] transition-colors">
                           {actor.profile_path ? (
-                            <img src={`[https://image.tmdb.org/t/p/w185$](https://image.tmdb.org/t/p/w185$){actor.profile_path}`} alt={actor.name} className="w-full h-full object-cover" />
+                            <img src={`https://image.tmdb.org/t/p/w185${actor.profile_path}`} alt={actor.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-[#8C0902]/30 bg-[#FECE79]/20">
                               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -468,7 +485,7 @@ export default function MovieSearch({ currentUser }) {
                         ['flatrate', 'rent', 'buy'].map(type => 
                           detailedMovie.providers[type].map(provider => (
                             <div key={provider.provider_id + type} className="flex items-center gap-1.5 bg-[#FFFDF9] border border-[#FECE79]/50 rounded-lg p-1.5 pr-3 shadow-sm" title={`${provider.provider_name} (${type})`}>
-                              <img src={`[https://image.tmdb.org/t/p/original$](https://image.tmdb.org/t/p/original$){provider.logo_path}`} className="w-7 h-7 rounded-md object-cover" alt={provider.provider_name}/>
+                              <img src={`https://image.tmdb.org/t/p/original${provider.logo_path}`} className="w-7 h-7 rounded-md object-cover" alt={provider.provider_name}/>
                               <span className="text-[10px] font-bold text-[#210100] capitalize">{type === 'flatrate' ? 'สตรีม' : type === 'rent' ? 'เช่า' : 'ซื้อ'}</span>
                             </div>
                           ))
@@ -477,7 +494,7 @@ export default function MovieSearch({ currentUser }) {
                     </>
                   ) : <p className="text-xs text-[#E6A341] animate-pulse">กำลังตรวจสอบช่องทางรับชม...</p>}
                 </div>
-                <a href={`[https://www.youtube.com/results?search_query=$](https://www.youtube.com/results?search_query=$){encodeURIComponent(selectedMovie.title + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
+                <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent((selectedMovie.title || selectedMovie.name) + ' official trailer')}`} target="_blank" rel="noopener noreferrer" className="w-full bg-[#8C0902] hover:bg-[#210100] text-white font-bold py-4 rounded-xl text-center transition-all shadow-md flex items-center justify-center gap-2 hover:-translate-y-1">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>ดูตัวอย่าง Trailer
                 </a>
               </div>
