@@ -158,9 +158,9 @@ export default function MovieSearch({ currentUser }) {
 
         const rawMessage = res.data.ai_message || "";
         
-        // 🟢 สกัด ID: ปรับ Regex ให้ทนทานต่อการเว้นวรรคผิดของ AI
+        // 🟢 อัปเกรดระบบสกัด ID ขั้นสุดยอด: จับได้หมดทั้ง <id>123</id>, [ID: 123], <id>movie-123</id>
         const extractedItems = [];
-        const idRegex = /<id>\s*(?:(movie|tv)-)?(\d+)\s*<\/id>/gi;
+        const idRegex = /(?:<id>|\[ID:\s*)\s*(?:(movie|tv)-)?(\d+)\s*(?:<\/id>|\])/gi;
         let match;
         while ((match = idRegex.exec(rawMessage)) !== null) {
             extractedItems.push({ 
@@ -169,15 +169,16 @@ export default function MovieSearch({ currentUser }) {
             });
         }
 
-        // ล้าง Tag ออกเพื่อให้ข้อความสวยงาม
+        // ล้าง Tag ซ่อนแบบครอบจักรวาล เพื่อไม่ให้ตัวหนังสือหรือโค้ดแปลกๆ โผล่ในแชท
         let cleanAiMessage = rawMessage
-            .replace(/\s*<id>\s*(?:movie-|tv-)?\d+\s*<\/id>/gi, '') 
+            .replace(/(?:<id>|\[ID:\s*)\s*(?:movie-|tv-)?\d+\s*(?:<\/id>|\])/gi, '') 
             .replace(/!\[.*?\]\(.*?\)/g, '');
             
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
+        // ให้สิทธิ์การดึงการ์ดตาม ID ที่ AI พิมพ์ออกมาเป็นอันดับแรกสุด
         const backendIds = res.data.recommended_movie_ids || [];
         const finalItems = extractedItems.length > 0 
             ? extractedItems.slice(0, 3) 
@@ -212,13 +213,11 @@ export default function MovieSearch({ currentUser }) {
                 let ageRating = "NR";
 
                 if (data.id) {
-                   // 🟢 แก้ไขปัญหา Age Rating หาย: ดึงเรทติ้งประเทศผู้สร้างมาแสดงถ้าหา US/TH ไม่เจอ
                    if (actualType === 'tv') {
                        let ratingObj = data.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') ||
                                        data.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
                        
                        if (!ratingObj && data.content_ratings?.results?.length > 0) {
-                           // หาประเทศต้นทาง หรือเอาอันแรกที่มี
                            ratingObj = data.content_ratings.results.find(r => data.origin_country?.includes(r.iso_3166_1)) || data.content_ratings.results[0];
                        }
                        ageRating = ratingObj?.rating || "NR";
