@@ -158,50 +158,39 @@ export default function MovieSearch({ currentUser }) {
 
         const rawMessage = res.data.ai_message || "";
         
-        // 🟢 เปลี่ยนมาดึง "ชื่อเรื่อง" จากข้อความแทนการใช้ ID
-        const extractedTitles = [];
-        const boldRegex = /\*\*(.*?)\*\*/g; // ค้นหาข้อความใน ** **
+        // ดึงเฉพาะคำค้นหาภาษาอังกฤษที่อยู่ในแท็ก <search>
+        const extractedQueries = [];
+        const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
         let match;
-        
-        while ((match = boldRegex.exec(rawMessage)) !== null) {
-            let text = match[1].trim();
-            // ป้องกัน AI พิมพ์ตัวหนาผิดที่ เช่น **หมวดหมู่:**
-            if (!text.includes("หมวดหมู่") && !text.includes("เรื่องย่อ") && !text.includes("ทำไม") && text.length > 2) {
-                extractedTitles.push(text);
-            }
+        while ((match = searchRegex.exec(rawMessage)) !== null) {
+            extractedQueries.push(match[1].trim());
         }
 
-        // ล้างโค้ด <id> ทิ้งเผื่อ AI ดื้อยังแอบส่งมา และตั้งค่ากล่องข้อความ
+        // ล้างแท็ก <search> ทิ้งเพื่อให้ข้อความเนียนตา
         let cleanAiMessage = rawMessage
-            .replace(/<id>.*?<\/id>/gi, '') 
+            .replace(/<search>.*?<\/search>/gi, '') 
             .replace(/!\[.*?\]\(.*?\)/g, '');
             
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        const finalTitles = extractedTitles.slice(0, 3);
+        const finalQueries = extractedQueries.slice(0, 3);
 
-        if (finalTitles.length > 0) {
+        if (finalQueries.length > 0) {
           const API_KEY = "181edc5801db6678de6ccb2864149a6a";
           const fetchedDetails = await Promise.all(
-            finalTitles.map(async (titleRaw) => { 
+            finalQueries.map(async (query) => { 
               try {
-                // ทำความสะอาดชื่อเรื่อง (เอาปี/วงเล็บออก เพื่อให้ TMDB ค้นหาได้แม่นยำที่สุด)
-                // เช่น "พี่มาก..พระโขนง (Pee Mak) (2013)" -> "พี่มาก..พระโขนง Pee Mak"
-                const query = titleRaw.replace(/\(\d{4}\)/g, '').replace(/[()]/g, ' ').trim();
-                
-                // 🟢 โยนชื่อที่ AI พิมพ์ไปค้นหาตรงๆ ผ่าน API (หมดปัญหาชนกันระหว่างหนังและซีรีส์)
+                // โยนชื่อภาษาอังกฤษล้วนๆ ไปให้ TMDB หาให้
                 const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
                 const searchRes = await fetch(searchUrl);
                 const searchData = await searchRes.json();
                 
                 if (searchData.results && searchData.results.length > 0) {
-                    // เลือกผลลัพธ์แรกที่เป็นหนังหรือซีรีส์
                     const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
                     
                     if (mediaResult) {
                         const type = mediaResult.media_type;
-                        // ดึงข้อมูลแบบละเอียดเพื่อเอาเรทติ้ง
                         const detailUrl = type === 'tv' 
                           ? `https://api.themoviedb.org/3/tv/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
                           : `https://api.themoviedb.org/3/movie/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
@@ -360,7 +349,8 @@ export default function MovieSearch({ currentUser }) {
                   <h3 className="text-md font-black text-[#210100] uppercase tracking-wide">ภาพยนตร์ที่ AI แนะนำ</h3>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full justify-center">
+                {/* 🟢 แก้ตรงนี้: เปลี่ยนโครงสร้าง Grid ให้เป็น 2 คอลัมน์บนมือถือ เหมือนหน้า Home */}
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full justify-center">
                   {searchMovies.map((item) => {
                     const title = item.media_type === 'tv' ? item.name : item.title;
                     const originalTitle = item.media_type === 'tv' ? item.original_name : item.original_title;
@@ -368,6 +358,7 @@ export default function MovieSearch({ currentUser }) {
 
                     return (
                       <div key={item.id} className="flex flex-col h-full group bg-white rounded-2xl p-3 shadow-[0_4px_20px_rgba(33,1,0,0.04)] border border-[#FECE79]/40 hover:shadow-md transition-shadow">
+                        {/* 🟢 แก้ตรงนี้: สัดส่วนรูป aspect-2/3 ใส่ก้ามปูให้ถูกต้องตามหลัก Tailwind */}
                         <div onClick={() => handleMovieClick(item)} className="relative w-full aspect-2/3 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
                           <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           
