@@ -158,73 +158,80 @@ export default function MovieSearch({ currentUser }) {
 
         const rawMessage = res.data.ai_message || "";
         
-        // ==========================================
-        // จุดที่แก้ที่ 1: บังคับแยก Type (movie/tv) อย่างเด็ดขาด
-        // ==========================================
-        const extractedItems = [];
-        // ค้นหาเฉพาะ <id>movie-123</id> หรือ <id>tv-123</id> เท่านั้น
-        const idRegex = /<id>(movie|tv)-(\d+)<\/id>/gi; 
+        // 🟢 เปลี่ยนมาดึง "ชื่อเรื่อง" จากข้อความแทนการใช้ ID
+        const extractedTitles = [];
+        const boldRegex = /\*\*(.*?)\*\*/g; // ค้นหาข้อความใน ** **
         let match;
-        while ((match = idRegex.exec(rawMessage)) !== null) {
-            extractedItems.push({ 
-                type: match[1].toLowerCase(), // จะได้ 'movie' หรือ 'tv' เสมอ
-                id: parseInt(match[2]) 
-            });
+        
+        while ((match = boldRegex.exec(rawMessage)) !== null) {
+            let text = match[1].trim();
+            // ป้องกัน AI พิมพ์ตัวหนาผิดที่ เช่น **หมวดหมู่:**
+            if (!text.includes("หมวดหมู่") && !text.includes("เรื่องย่อ") && !text.includes("ทำไม") && text.length > 2) {
+                extractedTitles.push(text);
+            }
         }
 
-        // ล้าง Tag ออกเพื่อให้แชทสะอาด
+        // ล้างโค้ด <id> ทิ้งเผื่อ AI ดื้อยังแอบส่งมา และตั้งค่ากล่องข้อความ
         let cleanAiMessage = rawMessage
-            .replace(/<id>(movie|tv)-\d+<\/id>/gi, '') 
+            .replace(/<id>.*?<\/id>/gi, '') 
             .replace(/!\[.*?\]\(.*?\)/g, '');
             
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
-        
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        const finalItems = extractedItems.slice(0, 3); // ใช้ข้อมูลจาก AI เท่านั้น
+        const finalTitles = extractedTitles.slice(0, 3);
 
-        if (finalItems.length > 0) {
+        if (finalTitles.length > 0) {
           const API_KEY = "181edc5801db6678de6ccb2864149a6a";
           const fetchedDetails = await Promise.all(
-            finalItems.map(async (item) => { 
+            finalTitles.map(async (titleRaw) => { 
               try {
-                // ==========================================
-                // จุดที่แก้ที่ 2: สั่งแยก Endpoint API ห้ามค้นหามั่วข้ามหมวด
-                // ==========================================
-                const url = item.type === 'tv' 
-                  ? `https://api.themoviedb.org/3/tv/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                  : `https://api.themoviedb.org/3/movie/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                // ทำความสะอาดชื่อเรื่อง (เอาปี/วงเล็บออก เพื่อให้ TMDB ค้นหาได้แม่นยำที่สุด)
+                // เช่น "พี่มาก..พระโขนง (Pee Mak) (2013)" -> "พี่มาก..พระโขนง Pee Mak"
+                const query = titleRaw.replace(/\(\d{4}\)/g, '').replace(/[()]/g, ' ').trim();
                 
-                const response = await fetch(url);
-                const data = await response.json();
-
-                let ageRating = "NR";
-
-                if (data.id) {
-                   if (item.type === 'tv') {
-                       let ratingObj = data.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') ||
-                                       data.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
-                       
-                       if (!ratingObj && data.content_ratings?.results?.length > 0) {
-                           ratingObj = data.content_ratings.results.find(r => data.origin_country?.includes(r.iso_3166_1)) || data.content_ratings.results[0];
-                       }
-                       ageRating = ratingObj?.rating || "NR";
-                       return { ...data, media_type: 'tv', genre_ids: data.genres ? data.genres.map(g => g.id) : [], age_rating: ageRating };
-                   
-                   } else {
-                       let releaseObj = data.release_dates?.results?.find(r => r.iso_3166_1 === 'TH') ||
-                                        data.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
-                       
-                       if (!releaseObj && data.release_dates?.results?.length > 0) {
-                           const originCountries = data.production_countries?.map(c => c.iso_3166_1) || [];
-                           releaseObj = data.release_dates.results.find(r => originCountries.includes(r.iso_3166_1)) || data.release_dates.results[0];
-                       }
-                       const cert = releaseObj?.release_dates?.find(rd => rd.certification !== "")?.certification;
-                       ageRating = cert || "NR";
-                       return { ...data, media_type: 'movie', genre_ids: data.genres ? data.genres.map(g => g.id) : [], age_rating: ageRating };
-                   }
+                // 🟢 โยนชื่อที่ AI พิมพ์ไปค้นหาตรงๆ ผ่าน API (หมดปัญหาชนกันระหว่างหนังและซีรีส์)
+                const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
+                const searchRes = await fetch(searchUrl);
+                const searchData = await searchRes.json();
+                
+                if (searchData.results && searchData.results.length > 0) {
+                    // เลือกผลลัพธ์แรกที่เป็นหนังหรือซีรีส์
+                    const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
+                    
+                    if (mediaResult) {
+                        const type = mediaResult.media_type;
+                        // ดึงข้อมูลแบบละเอียดเพื่อเอาเรทติ้ง
+                        const detailUrl = type === 'tv' 
+                          ? `https://api.themoviedb.org/3/tv/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                          : `https://api.themoviedb.org/3/movie/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                        
+                        const detailRes = await fetch(detailUrl);
+                        const detailData = await detailRes.json();
+                        
+                        let ageRating = "NR";
+                        if (type === 'tv') {
+                            let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') ||
+                                            detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
+                            if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
+                                ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1)) || detailData.content_ratings.results[0];
+                            }
+                            ageRating = ratingObj?.rating || "NR";
+                        } else {
+                            let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH') ||
+                                             detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
+                            if (!releaseObj && detailData.release_dates?.results?.length > 0) {
+                                const originCountries = detailData.production_countries?.map(c => c.iso_3166_1) || [];
+                                releaseObj = detailData.release_dates.results.find(r => originCountries.includes(r.iso_3166_1)) || detailData.release_dates.results[0];
+                            }
+                            const cert = releaseObj?.release_dates?.find(rd => rd.certification !== "")?.certification;
+                            ageRating = cert || "NR";
+                        }
+                        
+                        return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: ageRating };
+                    }
                 }
-                return null; // ถ้าหาไม่เจอในหมวดที่กำหนด ให้คืนค่า null ทิ้งไปเลย ห้ามสลับหมวดหาเด็ดขาด
+                return null;
               } catch (err) { return null; }
             })
           );
