@@ -158,62 +158,50 @@ export default function MovieSearch({ currentUser }) {
 
         const rawMessage = res.data.ai_message || "";
         
-        // 🟢 อัปเกรดระบบสกัด ID ขั้นสุดยอด: จับได้หมดทั้ง <id>123</id>, [ID: 123], <id>movie-123</id>
+        // ==========================================
+        // จุดที่แก้ที่ 1: บังคับแยก Type (movie/tv) อย่างเด็ดขาด
+        // ==========================================
         const extractedItems = [];
-        const idRegex = /(?:<id>|\[ID:\s*)\s*(?:(movie|tv)-)?(\d+)\s*(?:<\/id>|\])/gi;
+        // ค้นหาเฉพาะ <id>movie-123</id> หรือ <id>tv-123</id> เท่านั้น
+        const idRegex = /<id>(movie|tv)-(\d+)<\/id>/gi; 
         let match;
         while ((match = idRegex.exec(rawMessage)) !== null) {
             extractedItems.push({ 
-                type: match[1] ? match[1].toLowerCase() : 'unknown', 
+                type: match[1].toLowerCase(), // จะได้ 'movie' หรือ 'tv' เสมอ
                 id: parseInt(match[2]) 
             });
         }
 
-        // ล้าง Tag ซ่อนแบบครอบจักรวาล เพื่อไม่ให้ตัวหนังสือหรือโค้ดแปลกๆ โผล่ในแชท
+        // ล้าง Tag ออกเพื่อให้แชทสะอาด
         let cleanAiMessage = rawMessage
-            .replace(/(?:<id>|\[ID:\s*)\s*(?:movie-|tv-)?\d+\s*(?:<\/id>|\])/gi, '') 
+            .replace(/<id>(movie|tv)-\d+<\/id>/gi, '') 
             .replace(/!\[.*?\]\(.*?\)/g, '');
             
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // ให้สิทธิ์การดึงการ์ดตาม ID ที่ AI พิมพ์ออกมาเป็นอันดับแรกสุด
-        const backendIds = res.data.recommended_movie_ids || [];
-        const finalItems = extractedItems.length > 0 
-            ? extractedItems.slice(0, 3) 
-            : backendIds.slice(0, 3).map(id => ({ type: 'unknown', id }));
+        const finalItems = extractedItems.slice(0, 3); // ใช้ข้อมูลจาก AI เท่านั้น
 
         if (finalItems.length > 0) {
           const API_KEY = "181edc5801db6678de6ccb2864149a6a";
           const fetchedDetails = await Promise.all(
             finalItems.map(async (item) => { 
               try {
-                const fetchTMDB = async (type, id) => {
-                  const url = type === 'tv' 
-                    ? `https://api.themoviedb.org/3/tv/${id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                    : `https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                  const res = await fetch(url);
-                  const data = await res.json();
-                  return { data, type };
-                };
+                // ==========================================
+                // จุดที่แก้ที่ 2: สั่งแยก Endpoint API ห้ามค้นหามั่วข้ามหมวด
+                // ==========================================
+                const url = item.type === 'tv' 
+                  ? `https://api.themoviedb.org/3/tv/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                  : `https://api.themoviedb.org/3/movie/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
 
-                let result;
-                if (item.type === 'movie' || item.type === 'tv') {
-                    result = await fetchTMDB(item.type, item.id);
-                } else {
-                    result = await fetchTMDB('movie', item.id);
-                    if (result.data.success === false && result.data.status_code === 34) {
-                        result = await fetchTMDB('tv', item.id);
-                    }
-                }
-
-                const data = result.data;
-                const actualType = result.type;
                 let ageRating = "NR";
 
                 if (data.id) {
-                   if (actualType === 'tv') {
+                   if (item.type === 'tv') {
                        let ratingObj = data.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') ||
                                        data.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
                        
@@ -236,7 +224,7 @@ export default function MovieSearch({ currentUser }) {
                        return { ...data, media_type: 'movie', genre_ids: data.genres ? data.genres.map(g => g.id) : [], age_rating: ageRating };
                    }
                 }
-                return null;
+                return null; // ถ้าหาไม่เจอในหมวดที่กำหนด ให้คืนค่า null ทิ้งไปเลย ห้ามสลับหมวดหาเด็ดขาด
               } catch (err) { return null; }
             })
           );
@@ -414,9 +402,7 @@ export default function MovieSearch({ currentUser }) {
                   })}
                 </div>
               </div>
-            ) : (
-              <div className="text-center w-full animate-fade-in text-gray-500 py-10">รอคำตอบจากคุณ...</div>
-            )}
+            ) : null }
           </div>
         )}
       </div>
