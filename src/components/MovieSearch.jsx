@@ -158,7 +158,7 @@ export default function MovieSearch({ currentUser }) {
 
         const rawMessage = res.data.ai_message || "";
         
-        // ดึงเฉพาะคำค้นหาภาษาอังกฤษที่อยู่ในแท็ก <search>
+        // 🟢 ดึงเฉพาะคำค้นหาภาษาอังกฤษที่อยู่ในแท็ก <search>
         const extractedQueries = [];
         const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
         let match;
@@ -181,7 +181,7 @@ export default function MovieSearch({ currentUser }) {
           const fetchedDetails = await Promise.all(
             finalQueries.map(async (query) => { 
               try {
-                // โยนชื่อภาษาอังกฤษล้วนๆ ไปให้ TMDB หาให้
+                // โยนชื่อภาษาอังกฤษล้วนๆ ไปให้ TMDB หาให้ (ไม่มีทางพลาด)
                 const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
                 const searchRes = await fetch(searchUrl);
                 const searchData = await searchRes.json();
@@ -224,6 +224,7 @@ export default function MovieSearch({ currentUser }) {
               } catch (err) { return null; }
             })
           );
+          // กรอง null ออก แสดงเฉพาะเรื่องที่หาเจอ
           setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
         }
 
@@ -349,7 +350,7 @@ export default function MovieSearch({ currentUser }) {
                   <h3 className="text-md font-black text-[#210100] uppercase tracking-wide">ภาพยนตร์ที่ AI แนะนำ</h3>
                 </div>
                 
-                {/* 🟢 แก้ตรงนี้: เปลี่ยนโครงสร้าง Grid ให้เป็น 2 คอลัมน์บนมือถือ เหมือนหน้า Home */}
+                {/* จัด Layout ให้สวยงามตามหลัก Mobile First */}
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full justify-center">
                   {searchMovies.map((item) => {
                     const title = item.media_type === 'tv' ? item.name : item.title;
@@ -358,7 +359,6 @@ export default function MovieSearch({ currentUser }) {
 
                     return (
                       <div key={item.id} className="flex flex-col h-full group bg-white rounded-2xl p-3 shadow-[0_4px_20px_rgba(33,1,0,0.04)] border border-[#FECE79]/40 hover:shadow-md transition-shadow">
-                        {/* 🟢 แก้ตรงนี้: สัดส่วนรูป aspect-2/3 ใส่ก้ามปูให้ถูกต้องตามหลัก Tailwind */}
                         <div onClick={() => handleMovieClick(item)} className="relative w-full aspect-2/3 rounded-xl overflow-hidden mb-3 cursor-pointer bg-[#FFFDF9] shrink-0">
                           <img src={`https://image.tmdb.org/t/p/w500${item.poster_path}`} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           
