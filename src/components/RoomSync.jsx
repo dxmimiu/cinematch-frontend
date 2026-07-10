@@ -11,7 +11,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
   useEffect(() => {
     const token = localStorage.getItem('cinematch_token');
     
-    // ตั้งเวลาให้หน้าเว็บยิงไปถามเซิร์ฟเวอร์ทุกๆ 3 วินาที (Polling)
     const interval = setInterval(async () => {
       try {
         const res = await axios.get(`https://cinematch-backend-hdvz.onrender.com/api/rooms/status/${roomPin}`, {
@@ -22,9 +21,7 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
         if (res.data.guestName) setGuestName(res.data.guestName);
         if (res.data.hostName) setHostName(res.data.hostName);
 
-        // ถ้าระบบประมวลผลเสร็จแล้ว (จากฝั่งโฮสต์กด)
         if (res.data.status === 'completed' && res.data.results) {
-          // เซฟผลลัพธ์ลง LocalStorage แล้วไปหน้า Result
           localStorage.setItem('cinematch_duo_results', JSON.stringify(res.data.results));
           clearInterval(interval);
           onNext(); 
@@ -32,7 +29,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
 
       } catch (err) {
         console.error("Sync Error:", err);
-        // ถ้าห้องหายไปแล้ว
         if (err.response?.status === 404) {
           clearInterval(interval);
           toast.error("ห้องนี้ถูกปิดไปแล้ว");
@@ -44,7 +40,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
     return () => clearInterval(interval);
   }, [roomPin, onNext, onLeave]);
 
-  // ฟังก์ชันนี้เฉพาะ Host เท่านั้นที่จะกดได้
   const handleStartMatch = async () => {
     setIsProcessing(true);
     const token = localStorage.getItem('cinematch_token');
@@ -53,7 +48,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
       const res = await axios.post(`https://cinematch-backend-hdvz.onrender.com/api/rooms/match/${roomPin}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      // นำผลลัพธ์ที่ได้จากการคำนวณเก็บไว้ แล้วไปหน้าต่อไป
       localStorage.setItem('cinematch_duo_results', JSON.stringify(res.data));
       onNext(); 
     } catch (err) {
@@ -64,21 +58,17 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
 
   return (
     <div className="min-h-screen bg-[#FFFDF9] flex flex-col items-center justify-center p-6 animate-fade-in relative overflow-hidden">
-      
-      {/* ปุ่มออก */}
       <button onClick={onLeave} className="absolute top-8 left-8 text-[#B14A36] hover:text-[#8C0902] font-bold flex items-center gap-2 z-20">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         ออกจากห้อง
       </button>
 
-      {/* อนิเมชันเรดาร์ */}
       <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center mb-12">
         <div className="absolute inset-0 rounded-full border-2 border-[#FECE79]/30"></div>
         <div className="absolute inset-4 rounded-full border-2 border-[#FECE79]/20"></div>
         <div className="absolute inset-8 rounded-full border-2 border-[#FECE79]/10"></div>
         <div className="absolute inset-0 rounded-full bg-[#E6A341]/10 animate-ping opacity-75"></div>
         
-        {/* ตรงกลางเรดาร์ */}
         <div className="z-10 bg-white border-4 border-[#8C0902] w-24 h-24 rounded-full shadow-[0_0_30px_rgba(140,9,2,0.3)] flex flex-col items-center justify-center">
           <span className="text-[10px] font-black text-[#B14A36] uppercase tracking-wider mb-1">PIN</span>
           <span className="text-xl font-black text-[#8C0902] tracking-widest">{roomPin}</span>
@@ -93,7 +83,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
           {roomStatus === 'waiting' ? 'ส่งรหัส PIN 6 หลักให้เพื่อนกรอกเพื่อเข้าร่วมห้อง' : 'ระบบกำลังผสานรสนิยมของคุณทั้งคู่'}
         </p>
 
-        {/* กล่องแสดงชื่อคนในห้อง */}
         <div className="flex items-center justify-between bg-white rounded-2xl p-4 shadow-md border-2 border-[#FECE79]/30 mb-8">
           <div className="flex flex-col items-center w-1/2">
             <div className="w-12 h-12 rounded-full bg-[#FECE79]/30 border-2 border-[#E6A341] flex items-center justify-center text-[#8C0902] font-black text-xl mb-2">
@@ -116,7 +105,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
           </div>
         </div>
 
-        {/* ปุ่มควบคุม (จะแสดงตามสถานะห้องและผู้ใช้) */}
         {role === 'host' ? (
           <button 
             onClick={handleStartMatch} 
@@ -133,7 +121,6 @@ export default function RoomSync({ username, role, roomPin, onNext, onLeave }) {
           </div>
         )}
       </div>
-
     </div>
   );
 }

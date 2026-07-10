@@ -3,92 +3,10 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const GENRE_MAP = {
-  28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
-  99: "สารคดี", 18: "ดราม่าเข้มข้น", 10751: "ครอบครัว", 14: "แฟนตาซีเวทมนตร์", 36: "ประวัติศาสตร์",
-  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับซ่อนเงื่อน", 10749: "โรแมนติก", 878: "ไซไฟอวกาศ",
-  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
-};
-
-const REVERSE_GENRE_MAP = Object.fromEntries(
-  Object.entries(GENRE_MAP).map(([id, name]) => [name, Number(id)])
-);
-
-const TMDB_API_KEY = "181edc5801db6678de6ccb2864149a6a";
-
-const getCombinedGenreWeights = () => {
-  const myPrefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
-  const myWeights = myPrefs.genreWeights || {};
-
-  const roomData = JSON.parse(localStorage.getItem('cinematch_room') || '{}');
-  const partnerWeights = roomData.partnerPreferences?.genreWeights || {};
-
-  const combined = {};
-  [myWeights, partnerWeights].forEach((weights) => {
-    Object.entries(weights).forEach(([genreName, weight]) => {
-      combined[genreName] = (combined[genreName] || 0) + weight;
-    });
-  });
-
-  return combined;
-};
-
-const getPersonalizedFallback = async (seenIds) => {
-  const combinedWeights = getCombinedGenreWeights();
-
-  const topGenreIds = Object.entries(combinedWeights)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => REVERSE_GENRE_MAP[name])
-    .filter(Boolean)
-    .slice(0, 3); 
-
-  if (topGenreIds.length === 0) {
-    const randomPage = Math.floor(Math.random() * 5) + 1;
-    const res = await fetch(
-      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=th-TH&sort_by=vote_average.desc&vote_count.gte=1000&page=${randomPage}`
-    );
-    const data = await res.json();
-    return (data.results || []).map((m, idx) => ({ ...m, matchPercent: 90 - idx }));
-  }
-
-  const genreParam = topGenreIds.join('|'); 
-  const pages = [1, 2, 3]; 
-  const requests = pages.map((page) =>
-    fetch(
-      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=th-TH` +
-      `&sort_by=popularity.desc&with_genres=${genreParam}&vote_count.gte=50&page=${page}`
-    ).then((r) => r.json())
-  );
-  
-  const results = await Promise.all(requests);
-  const candidates = results.flatMap((r) => r.results || []);
-
-  const unique = new Map();
-  candidates.forEach((m) => {
-    if (!seenIds.has(m.id) && !unique.has(m.id) && m.poster_path && m.backdrop_path) {
-      unique.set(m.id, m);
-    }
-  });
-
-  const scored = [...unique.values()].map((m) => {
-    const genreScore = (m.genre_ids || []).reduce((sum, gid) => {
-      const name = GENRE_MAP[gid];
-      return sum + (name ? combinedWeights[name] || 0 : 0);
-    }, 0);
-    const rawScore = genreScore + (m.vote_average || 0) * 0.5;
-    return { ...m, rawScore };
-  });
-
-  scored.sort((a, b) => b.rawScore - a.rawScore);
-  const maxScore = scored[0]?.rawScore || 1;
-
-  return scored.map((m, index) => {
-    let percent = 98;
-    if (index > 0 && m.rawScore > 0) {
-        percent = Math.floor((m.rawScore * 98) / maxScore);
-        if (percent >= 98) percent = 98 - index;
-    }
-    return { ...m, matchPercent: percent };
-  });
+  28: "แอคชั่น", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลก", 80: "อาชญากรรม",
+  99: "สารคดี", 18: "ดราม่า", 10751: "ครอบครัว", 14: "แฟนตาซี", 36: "ประวัติศาสตร์",
+  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับ", 10749: "โรแมนติก", 878: "ไซไฟ",
+  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
 };
 
 export default function Result({ onLeave }) {
@@ -105,71 +23,41 @@ export default function Result({ onLeave }) {
   useEffect(() => {
     const loadUserVotes = async () => {
       const token = localStorage.getItem('cinematch_token');
-      if (!token) return { likedIds: [], dislikedIds: [] };
+      if (!token) return;
       try {
         const res = await axios.get('https://cinematch-backend-hdvz.onrender.com/api/likes', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const liked = res.data.liked || [];
-        const disliked = res.data.disliked || [];
-        setLikedMovies(liked);
-        setDislikedMovies(disliked);
-        return {
-          likedIds: liked.map((m) => m.film_id ?? m.id),
-          dislikedIds: disliked.map((m) => m.film_id ?? m.id),
-        };
+        setLikedMovies(res.data.liked || []);
+        setDislikedMovies(res.data.disliked || []);
       } catch (err) {
         console.error("Error fetching likes", err);
-        return { likedIds: [], dislikedIds: [] };
       }
     };
 
-    const fetchMatchedMovies = async (seenIds) => {
+    const loadMatchedMovies = () => {
       try {
-        let dataToUse = [];
-
-        try {
-          const savedResults = localStorage.getItem('cinematch_duo_results');
-          if (savedResults && savedResults !== "undefined") {
-            dataToUse = JSON.parse(savedResults);
-          } else {
-            const roomData = JSON.parse(localStorage.getItem('cinematch_room') || '{}');
-            const pin = roomData.pin || '00000';
-            const token = localStorage.getItem('cinematch_token');
-            const res = await axios.get(`https://cinematch-backend-hdvz.onrender.com/api/rooms/status/${pin}`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            dataToUse = res.data?.results || [];
-          }
-          if (!Array.isArray(dataToUse) || dataToUse.length === 0) throw new Error("Empty Array");
-        } catch (backendErr) {
-          dataToUse = await getPersonalizedFallback(seenIds);
-        }
-
-        const formatted = dataToUse
-          .filter(item => item && item.poster_path && item.backdrop_path)
-          .slice(0, 10)
-          .map((item, index) => ({
+        const savedResults = localStorage.getItem('cinematch_duo_results');
+        if (savedResults && savedResults !== "undefined") {
+          const data = JSON.parse(savedResults);
+          const formatted = data.map((item, index) => ({
             ...item,
             rank: index + 1,
-            matchPercent: item.matchPercent ?? (98 - index)
+            matchPercent: item.matchPercent || (99 - index)
           }));
-
-        setMovies(formatted);
+          setMovies(formatted);
+        } else {
+          toast.error("ไม่พบข้อมูลการจับคู่");
+        }
       } catch(e) {
-        console.error("Error fetching matched movies", e);
+        console.error("Error loading matched movies", e);
       } finally {
         setIsLoading(false);
       }
     };
 
-    const init = async () => {
-      const { likedIds, dislikedIds } = await loadUserVotes();
-      const seenIds = new Set([...likedIds, ...dislikedIds]);
-      await fetchMatchedMovies(seenIds);
-    };
-
-    init();
+    loadUserVotes();
+    loadMatchedMovies();
   }, []);
 
   const handleLikeDislike = async (e, item, type) => {
@@ -206,7 +94,6 @@ export default function Result({ onLeave }) {
           }
         }
       });
-      
       localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
     }
 
@@ -223,15 +110,7 @@ export default function Result({ onLeave }) {
           toast.success("นำออกจากรายการที่ชอบแล้ว");
         } else {
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-            { 
-              film_id: filmId, 
-              film_title: filmTitle, 
-              poster_path: posterPath, 
-              type: 'like',
-              media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
-              genres: item.genre_ids ? item.genre_ids.join(',') : '',
-              points: 2 
-            },
+            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'like', media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'), genres: item.genre_ids ? item.genre_ids.join(',') : '', points: 2 },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setLikedMovies([...likedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -245,15 +124,7 @@ export default function Result({ onLeave }) {
           toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
         } else {
           await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-            { 
-              film_id: filmId, 
-              film_title: filmTitle, 
-              poster_path: posterPath, 
-              type: 'dislike',
-              media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
-              genres: item.genre_ids ? item.genre_ids.join(',') : '',
-              points: 0 
-            },
+            { film_id: filmId, film_title: filmTitle, poster_path: posterPath, type: 'dislike', media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'), genres: item.genre_ids ? item.genre_ids.join(',') : '', points: 0 },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           setDislikedMovies([...dislikedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
@@ -262,8 +133,7 @@ export default function Result({ onLeave }) {
         }
       }
     } catch (err) {
-      console.error("API Vote Error:", err);
-      toast.error("เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล แต่ระบบจดจำความชอบให้แล้ว");
+      toast.error("เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล");
     }
   };
 
@@ -338,14 +208,8 @@ export default function Result({ onLeave }) {
       }
 
       setDetailedMovie({ 
-        ...thData, 
-        media_type: type, 
-        displayOverview: finalOverview, 
-        providers: mergedProviders, 
-        directorName: director ? director.name : 'ไม่ระบุ', 
-        cast: castArray, 
-        genreNames: genres, 
-        inTheaters 
+        ...thData, media_type: type, displayOverview: finalOverview, providers: mergedProviders, 
+        directorName: director ? director.name : 'ไม่ระบุ', cast: castArray, genreNames: genres, inTheaters 
       });
     } catch (error) { 
       console.error("Error fetching details", error); 
@@ -415,9 +279,7 @@ export default function Result({ onLeave }) {
                 <button 
                   onClick={(e) => handleLikeDislike(e, top1, 'dislike')} 
                   className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
-                    checkIsDisliked(top1.id) 
-                      ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
-                      : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
+                    checkIsDisliked(top1.id) ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                   }`}
                   title="ไม่ถูกใจ"
                 >
@@ -426,9 +288,7 @@ export default function Result({ onLeave }) {
                 <button 
                   onClick={(e) => handleLikeDislike(e, top1, 'like')} 
                   className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
-                    checkIsLiked(top1.id) 
-                      ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
-                      : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
+                    checkIsLiked(top1.id) ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
                   }`}
                   title="ถูกใจ"
                 >
@@ -465,9 +325,7 @@ export default function Result({ onLeave }) {
                   <button 
                     onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
                     className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
-                      checkIsDisliked(movie.id) 
-                        ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
-                        : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
+                      checkIsDisliked(movie.id) ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                     }`}
                   >
                     <svg className="w-4 h-4 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
@@ -475,9 +333,7 @@ export default function Result({ onLeave }) {
                   <button 
                     onClick={(e) => handleLikeDislike(e, movie, 'like')} 
                     className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg backdrop-blur-md transition-transform border ${
-                      checkIsLiked(movie.id) 
-                        ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
-                        : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
+                      checkIsLiked(movie.id) ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
                     }`}
                   >
                     <svg className="w-4 h-4 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
@@ -525,9 +381,7 @@ export default function Result({ onLeave }) {
                       <button 
                         onClick={(e) => handleLikeDislike(e, movie, 'dislike')} 
                         className={`w-7 h-7 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm border transition-transform ${
-                          checkIsDisliked(movie.id) 
-                            ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' 
-                            : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
+                          checkIsDisliked(movie.id) ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' : 'bg-[#8C0902]/90 border-white/20 text-white hover:scale-110 hover:bg-[#8C0902]'
                         }`}
                       >
                         <svg className="w-3.5 h-3.5 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
@@ -535,9 +389,7 @@ export default function Result({ onLeave }) {
                       <button 
                         onClick={(e) => handleLikeDislike(e, movie, 'like')} 
                         className={`w-7 h-7 rounded-full flex items-center justify-center shadow-md backdrop-blur-sm border transition-transform ${
-                          checkIsLiked(movie.id) 
-                            ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' 
-                            : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
+                          checkIsLiked(movie.id) ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' : 'bg-[#E6A341]/90 border-white/20 text-[#210100] hover:scale-110 hover:bg-[#E6A341]'
                         }`}
                       >
                         <svg className="w-3.5 h-3.5 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
