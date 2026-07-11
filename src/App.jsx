@@ -96,8 +96,6 @@ export default function App() {
         {step === 4 && <MovieSearch currentUser={currentUser} />}
         {step === 5 && <Home setStep={setStep} currentUser={currentUser} />}
         {step === 6 && <Collection />}
-        
-        {/* ✅ เพิ่ม step 7 สำหรับหน้าค้นหาปกติ */}
         {step === 7 && <SearchPage />}
       </div>
 
