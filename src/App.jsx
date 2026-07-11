@@ -13,6 +13,7 @@ import MovieSearch from './components/MovieSearch';
 import Home from './components/Home';
 import Auth from './components/Auth'; 
 import Collection from './components/Collection';
+import SearchPage from './components/SearchPage'; // ✅ เพิ่ม Import หน้า SearchPage
 
 export default function App() {
   // 🟢 ตั้งค่าเริ่มต้นเป็น -1 เพื่อให้แสดงหน้าล็อกอินทันที ไม่มีการยิงตรวจเช็ค Token ค้างเก่า
@@ -92,10 +93,12 @@ export default function App() {
         )}
         
         {step === 3 && <Result onLeave={() => setStep(1)} />}
-      
         {step === 4 && <MovieSearch currentUser={currentUser} />}
         {step === 5 && <Home setStep={setStep} currentUser={currentUser} />}
         {step === 6 && <Collection />}
+        
+        {/* ✅ เพิ่ม step 7 สำหรับหน้าค้นหาปกติ */}
+        {step === 7 && <SearchPage />}
       </div>
 
       <Toaster position="top-center" />

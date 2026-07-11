@@ -275,7 +275,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
           <h1 className="text-3xl md:text-5xl font-black text-[#210100] mb-6 tracking-tight leading-tight">ค้นหาภาพยนตร์ <span className="text-[#8C0902]">ที่ตรงใจคุณและเพื่อน</span></h1>
           <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full">
             <button onClick={() => setStep(1)} className="bg-[#8C0902] hover:bg-[#210100] text-white font-extrabold text-sm md:text-base py-4 px-8 rounded-full transition-all shadow-lg hover:-translate-y-1 flex items-center justify-center gap-2 w-full sm:w-auto"><svg className="w-5 h-5 text-[#FECE79]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.866 8.21 8.21 0 0 0 3 2.48Z" /></svg> สร้างห้องจับคู่ </button>
-            <button onClick={() => setStep(4)} className="bg-white border-2 border-[#FECE79] text-[#8C0902] hover:bg-[#FFFDF9] font-extrabold text-sm md:text-base py-3.5 px-8 rounded-full transition-all w-full sm:w-auto">ไปหน้าค้นหา</button>
+            <button onClick={() => setStep(4)} className="bg-white border-2 border-[#FECE79] text-[#8C0902] hover:bg-[#FFFDF9] font-extrabold text-sm md:text-base py-3.5 px-8 rounded-full transition-all w-full sm:w-auto">AI Search</button>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 // คอมโพเนนต์แถบเมนูด้านบน (รองรับ Responsive มือถือและ Desktop)
 // รับค่า prop 4 ตัว:
@@ -47,12 +48,12 @@ export default function Navbar({ currentStep, setStep, onLogout, username }) {
             หน้าหลัก
           </button>
           
-          {/* เมนูค้นหา */}
+          {/* เมนู AI Search */}
           <button 
             onClick={() => { setStep(4); setIsMenuOpen(false); }} 
             className={`transition-colors w-full text-left md:w-auto py-1 ${currentStep === 4 ? 'text-[#8C0902] md:underline underline-offset-8 decoration-2' : 'text-[#210100]/60 hover:text-[#8C0902]'}`}
           >
-            ค้นหา
+            AI Search
           </button>
           
           {/* เมนูโหมดห้องจับคู่ */}
@@ -71,6 +72,16 @@ export default function Navbar({ currentStep, setStep, onLogout, username }) {
             คอลเลกชัน
           </button>
 
+          {/* เพิ่มปุ่มแว่นขยายค้นหา (วางไว้ข้างๆ โปรไฟล์ หรือเมนูอื่นๆ) */}
+          <button 
+            onClick={() => setStep(7)} 
+            className="p-2 text-gray-600 hover:text-[#B14A36] hover:bg-[#FECE79]/20 rounded-full transition-all duration-200"
+            title="ค้นหาภาพยนตร์และซีรีส์"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+          </button>
         </div>
 
         {/* พื้นที่ฝั่งขวาสุด สำหรับแสดงโปรไฟล์และปุ่มออกจากระบบ (ซ่อนชั่วคราวในมือถือขนาดเล็กจัดๆ หรือจัดเรียงให้พอดี) */}
