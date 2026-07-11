@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 
 // คอมโพเนนต์แถบเมนูด้านบน (รองรับ Responsive มือถือและ Desktop)
 export default function Navbar({ currentStep, setStep, onLogout, username }) {
