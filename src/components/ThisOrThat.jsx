@@ -97,7 +97,7 @@ export default function ThisOrThat({ onComplete }) {
   };
 
   const handleSelect = async (selectedMovie) => {
-    // คำนวณเวลาที่ใช้ไป (ถ้า timeLeft เป็น 0 ค่า timeTaken จะเท่ากับ 15 ซึ่งได้ 1 แต้ม)
+    // คำนวณเวลาที่ใช้ไป
     const timeTaken = 15 - timeLeft; 
     const dynamicPoints = calculatePoints(timeTaken);
     
@@ -106,6 +106,26 @@ export default function ThisOrThat({ onComplete }) {
     setTimeLeft(15); 
     const token = localStorage.getItem('cinematch_token');
 
+    // 🟢 1. ระบุผู้ชนะและผู้แพ้จากการกด
+    const winner = selectedMovie;
+    const loser = selectedMovie.id === currentPair.left.id ? currentPair.right : currentPair.left;
+
+    // 🟢 2. ดึงหมวดหมู่หลัก (Primary Genre) ของผู้ชนะและผู้แพ้
+    const winnerGenre = winner.genre_ids && winner.genre_ids.length > 0 ? GENRE_MAP[winner.genre_ids[0]] : null;
+    const loserGenre = loser.genre_ids && loser.genre_ids.length > 0 ? GENRE_MAP[loser.genre_ids[0]] : null;
+
+    // 🟢 3. ยิง API ส่งผลโหวตไปเข้าสมการ Bradley-Terry Model ที่ Backend
+    if (winnerGenre && loserGenre) {
+      axios.post('https://cinematch-backend-hdvz.onrender.com/api/this-that/vote', {
+        winner_movie_id: winner.id,
+        loser_movie_id: loser.id,
+        winner_genre: winnerGenre,
+        loser_genre: loserGenre
+      }, { headers: { Authorization: `Bearer ${token}` } })
+      .catch(err => console.error("Bradley-Terry Vote Error:", err));
+    }
+
+    // --- (โค้ดเก่าด้านล่างนี้เก็บไว้เหมือนเดิม เพื่อให้ซิงค์ลง LocalStorage และ History) ---
     if (selectedMovie.genre_ids) {
       let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
       if (!prefs.genreWeights) prefs.genreWeights = {};
