@@ -118,7 +118,7 @@ export default function MovieSearch({ currentUser }) {
     const token = localStorage.getItem('cinematch_token');
 
     try {
-        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
+        const res = await axios.post('[https://cinematch-backend-hdvz.onrender.com/api/ai-search](https://cinematch-backend-hdvz.onrender.com/api/ai-search)', 
             { query: currentQuery, conversation_id: conversationId }, 
             { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -139,7 +139,7 @@ export default function MovieSearch({ currentUser }) {
             rawMessage = rawMessage.replace(arrayRegex, ''); 
         }
 
-        // แปลงเป็น Object หากสกัดข้อความ JSON ออกมาได้
+        // แปลงเป็น Object
         if (jsonString && aiSuggestedMovies.length === 0) {
             try {
                 aiSuggestedMovies = JSON.parse(jsonString);
@@ -156,36 +156,22 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 🟢 2. ค้นหาข้อมูลภาพยนตร์จากชื่อภาษาอังกฤษ เพื่อเอา ID ของจริง (แก้ปัญหา 404)
+        // 🟢 2. ใช้ ID ที่ได้จาก AI ไปดึงข้อมูลตรงๆ
         if (aiSuggestedMovies.length > 0) {
             const API_KEY = "181edc5801db6678de6ccb2864149a6a";
             const fetchedDetails = await Promise.all(
                 aiSuggestedMovies.map(async (aiMovie) => {
                     try {
-                        const searchTitle = aiMovie.title_en || aiMovie.title || "";
-                        if (!searchTitle) return null;
+                        if (!aiMovie.id) return null;
+                        
+                        const rawId = String(aiMovie.id);
+                        const type = rawId.startsWith('tv-') ? 'tv' : 'movie';
+                        const tmdbId = rawId.replace(/^(mv-|tv-)/, '');
 
-                        // เอาชื่อไปค้นหาใน TMDB เพื่อดึง ID ตัวจริง
-                        const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
-                        const searchRes = await fetch(searchUrl);
-                        const searchData = await searchRes.json();
-
-                        if (!searchData.results || searchData.results.length === 0) return null;
-
-                        // เอาผลลัพธ์แรกที่เป็น movie หรือ tv (และตรงกับ type ที่ AI ส่งมาถ้ามี)
-                        const mediaResult = searchData.results.find(r => 
-                            aiMovie.type ? r.media_type === aiMovie.type : (r.media_type === 'movie' || r.media_type === 'tv')
-                        ) || searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
-
-                        if (!mediaResult) return null;
-
-                        const type = mediaResult.media_type;
-                        const tmdbId = mediaResult.id;
-
-                        // 🟢 3. ดึงข้อมูลแบบละเอียดมาแสดงผล
+                        // ดึงข้อมูลแบบละเอียดมาแสดงผลโดยใช้ ID
                         const detailUrl = type === 'tv' 
-                          ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                          : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                          ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                          : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                         
                         const detailRes = await fetch(detailUrl);
                         if (!detailRes.ok) return null;
