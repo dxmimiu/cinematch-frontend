@@ -75,71 +75,59 @@ export default function Home({ setStep, currentUser, userPreferences }) {
     fetchData();
   }, []);
 
-  const handleVote = async (movie, type) => {
-    const token = localStorage.getItem('cinematch_token'); 
-    if (!token) {
-      toast.error('กรุณาล็อกอินก่อนบันทึกความชอบ');
-      return;
-    }
+  // ฟังก์ชันจัดการการกด Like / Dislike
+    const handleVote = async (item, type, e) => {
+        if (e) e.stopPropagation();
 
-    let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
-    if (!prefs.genreWeights) prefs.genreWeights = {};
+        try {
+            const token = localStorage.getItem('cinematch_token');
+            const isLike = type === 'like';
+            
+            // 🟢 1. อัปเดตคะแนน (ทำเฉพาะตอน Like เท่านั้น)
+            if (item.genre_ids && isLike) {
+                let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+                if (!prefs.genreWeights) prefs.genreWeights = {};
 
-    if (movie.genre_ids) {
-      const GENRE_MAP_ID_TO_NAME = {
-        28: "แอคชั่นบู้ล้างผลาญ", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลกขบขัน", 80: "อาชญากรรม",
-        99: "สารคดี", 18: "ดราม่าเข้มข้น", 10751: "ครอบครัว", 14: "แฟนตาซีเวทมนตร์", 36: "ประวัติศาสตร์",
-        27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับซ่อนเงื่อน", 10749: "โรแมนติก", 878: "ไซไฟอวกาศ",
-        10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญตื่นเต้น", 10752: "สงคราม", 37: "คาวบอยตะวันตก"
-      };
+                item.genre_ids.forEach(id => {
+                    const genreName = GENRE_MAP[id];
+                    if (genreName) {
+                        prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 5; 
+                    }
+                });
+                
+                localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
-      movie.genre_ids.forEach(id => {
-        const genreName = GENRE_MAP_ID_TO_NAME[id];
-        if (genreName) {
-          if (type === 'like') {
-            prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
-          } else if (type === 'dislike' && prefs.genreWeights[genreName]) {
-            prefs.genreWeights[genreName] = Math.max(0, prefs.genreWeights[genreName] - 2);
-          }
+                axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
+                    { genreWeights: prefs.genreWeights },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                ).catch(err => console.error("Pref Sync Error:", err));
+            }
+
+            // 🟢 2. บันทึกเข้าคอลเลกชัน
+            const payload = {
+                film_id: item.id,
+                film_title: item.title || item.name,
+                poster_path: item.poster_path,
+                type: type,
+                media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+                genres: item.genre_ids ? item.genre_ids.join(',') : '',
+                points: isLike ? 5 : 0 
+            };
+
+            await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            toast.success(isLike ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
+            
+            // ถ้าหน้าไหนมี setResults สำหรับเตะการ์ดออก ก็คงบรรทัดนั้นไว้ครับ (เช่น SearchPage, MovieSearch)
+            // setResults(prev => prev.filter(movie => movie.id !== item.id));
+
+        } catch (error) {
+            console.error("Vote error:", error);
+            toast.error("เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล");
         }
-      });
-      
-      localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
-    }
-
-    // ยิง API ซิงค์คะแนน (Preferences) ขึ้น Cloud
-    axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
-      { genreWeights: prefs.genreWeights },
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).catch(err => console.error("Pref Sync Error:", err));
-
-    try {
-      // ส่งข้อมูล Like/Dislike พร้อมแนบคะแนน
-      await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-        { 
-          film_id: movie.id, 
-          film_title: movie.title || movie.name, 
-          poster_path: movie.poster_path, 
-          type: type,
-          media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
-          genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-          points: type === 'like' ? 2 : 0 // แนบคะแนนไปที่ตาราง Like
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      toast.success(type === 'like' ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
-    } catch (error) {
-      console.error("API Vote Error:", error);
-      toast.error('เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล แต่ระบบจดจำความชอบให้แล้ว');
-    }
-  };
-
-  const scroll = (ref, direction) => {
-    if (ref.current) {
-      const scrollAmount = direction === 'left' ? -300 : 300;
-      ref.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
-  };
+    };
 
   const ScrollButtons = ({ scrollRef }) => (
     <div className="hidden md:flex gap-2">

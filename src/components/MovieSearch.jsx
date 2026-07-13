@@ -42,99 +42,59 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
-  const handleVote = async (e, movie, type) => {
-    e.stopPropagation(); 
-    const token = localStorage.getItem('cinematch_token');
-    if (!token) {
-      toast.error('กรุณาล็อกอินก่อนบันทึกความชอบ');
-      return;
-    }
+  // ฟังก์ชันจัดการการกด Like / Dislike
+    const handleVote = async (item, type, e) => {
+        if (e) e.stopPropagation();
 
-    // movie.id ตรงนี้จะเป็นตัวเลขเพียวๆ แล้ว เพราะเราลบ Prefix ออกตอนดึง TMDB API
-    const filmId = String(movie.id).replace(/^(mv-|tv-)/, '');
-    const filmTitle = movie.title || movie.name;
-    const posterPath = movie.poster_path;
+        try {
+            const token = localStorage.getItem('cinematch_token');
+            const isLike = type === 'like';
+            
+            // 🟢 1. อัปเดตคะแนน (ทำเฉพาะตอน Like เท่านั้น)
+            if (item.genre_ids && isLike) {
+                let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+                if (!prefs.genreWeights) prefs.genreWeights = {};
 
-    const isCurrentlyLiked = likedMovies.some(m => m.film_id === filmId || m.id === filmId);
-    const isCurrentlyDisliked = dislikedMovies.some(m => m.film_id === filmId || m.id === filmId);
+                item.genre_ids.forEach(id => {
+                    const genreName = GENRE_MAP[id];
+                    if (genreName) {
+                        prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 5; 
+                    }
+                });
+                
+                localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
-    const isAddingVote = (type === 'like' && !isCurrentlyLiked) || (type === 'dislike' && !isCurrentlyDisliked);
-    const isRemovingVote = (type === 'like' && isCurrentlyLiked) || (type === 'dislike' && isCurrentlyDisliked);
+                axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
+                    { genreWeights: prefs.genreWeights },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                ).catch(err => console.error("Pref Sync Error:", err));
+            }
 
-    let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
-    if (!prefs.genreWeights) prefs.genreWeights = {};
+            // 🟢 2. บันทึกเข้าคอลเลกชัน
+            const payload = {
+                film_id: item.id,
+                film_title: item.title || item.name,
+                poster_path: item.poster_path,
+                type: type,
+                media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+                genres: item.genre_ids ? item.genre_ids.join(',') : '',
+                points: isLike ? 5 : 0 
+            };
 
-    if (movie.genre_ids) {
-      movie.genre_ids.forEach(id => {
-        const genreName = GENRE_MAP[id];
-        if (genreName) {
-          if (isAddingVote) {
-            if (type === 'like') prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
-            else if (type === 'dislike') prefs.genreWeights[genreName] = Math.max(0, (prefs.genreWeights[genreName] || 0) - 2);
-          } else if (isRemovingVote) {
-            if (type === 'like') prefs.genreWeights[genreName] = Math.max(0, (prefs.genreWeights[genreName] || 0) - 2);
-            else if (type === 'dislike') prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 2;
-          }
+            await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            toast.success(isLike ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
+            
+            // ถ้าหน้าไหนมี setResults สำหรับเตะการ์ดออก ก็คงบรรทัดนั้นไว้ครับ (เช่น SearchPage, MovieSearch)
+            // setResults(prev => prev.filter(movie => movie.id !== item.id));
+
+        } catch (error) {
+            console.error("Vote error:", error);
+            toast.error("เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล");
         }
-      });
-      localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
-    }
-
-    axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
-      { genreWeights: prefs.genreWeights },
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).catch(err => console.error("Pref Sync Error:", err));
-
-    try {
-      if (type === 'like') {
-        if (isCurrentlyLiked) {
-          await axios.delete(`https://cinematch-backend-hdvz.onrender.com/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
-          setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
-          toast.success("นำออกจากรายการที่ชอบแล้ว");
-        } else {
-          await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-            { 
-              film_id: filmId, 
-              film_title: filmTitle, 
-              poster_path: posterPath, 
-              type: 'like',
-              media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
-              genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-              points: 2 
-            },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          setLikedMovies([...likedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
-          setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
-          toast.success("เพิ่มไปยังรายการที่ชอบแล้ว");
-        }
-      } else {
-        if (isCurrentlyDisliked) {
-          await axios.delete(`https://cinematch-backend-hdvz.onrender.com/api/likes/${filmId}`, { headers: { Authorization: `Bearer ${token}` } });
-          setDislikedMovies(dislikedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
-          toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
-        } else {
-          await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-            { 
-              film_id: filmId, 
-              film_title: filmTitle, 
-              poster_path: posterPath, 
-              type: 'dislike',
-              media_type: movie.media_type || (movie.first_air_date ? 'tv' : 'movie'),
-              genres: movie.genre_ids ? movie.genre_ids.join(',') : '',
-              points: 0 
-            },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          setDislikedMovies([...dislikedMovies, { film_id: filmId, film_title: filmTitle, poster_path: posterPath }]);
-          setLikedMovies(likedMovies.filter(m => m.film_id !== filmId && m.id !== filmId));
-          toast.success("เพิ่มไปยังรายการที่ไม่ชอบแล้ว");
-        }
-      }
-    } catch (error) {
-      toast.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
-    }
-  };
+    };
 
   const checkIsLiked = (id) => likedMovies.some(m => m.film_id === id || m.id === id);
   const checkIsDisliked = (id) => dislikedMovies.some(m => m.film_id === id || m.id === id);

@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+const GENRE_MAP = {
+  28: "แอคชั่น", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลก", 80: "อาชญากรรม",
+  99: "สารคดี", 18: "ดราม่า", 10751: "ครอบครัว", 14: "แฟนตาซี", 36: "ประวัติศาสตร์",
+  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับ", 10749: "โรแมนติก", 878: "ไซไฟ",
+  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
+};
+
 export default function SearchPage() {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
@@ -50,6 +57,28 @@ export default function SearchPage() {
             const token = localStorage.getItem('cinematch_token');
             const isLike = type === 'like';
             
+            // 🟢 1. คำนวณและบันทึกคะแนนความชอบลงตาราง user_preferences
+            if (item.genre_ids) {
+                let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+                if (!prefs.genreWeights) prefs.genreWeights = {};
+
+                item.genre_ids.forEach(id => {
+                    const genreName = GENRE_MAP[id];
+                    // ถ้ากด Like ถึงจะบวก 5 แต้ม (ถ้ากด Dislike จะปล่อยผ่าน ไม่ทำอะไรกับ user_preferences)
+                    if (genreName && isLike) {
+                        prefs.genreWeights[genreName] = (prefs.genreWeights[genreName] || 0) + 5; 
+                    }
+                });
+                
+                localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
+
+                axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
+                    { genreWeights: prefs.genreWeights },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                ).catch(err => console.error("Pref Sync Error:", err));
+            }
+
+            // 🟢 2. บันทึกหนังเข้าหน้าคอลเลกชัน (user_likes)
             const payload = {
                 film_id: item.id,
                 film_title: item.title || item.name,
@@ -57,7 +86,7 @@ export default function SearchPage() {
                 type: type,
                 media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
                 genres: item.genre_ids ? item.genre_ids.join(',') : '',
-                points: isLike ? 2 : 0 
+                points: isLike ? 5 : 0 
             };
 
             await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {

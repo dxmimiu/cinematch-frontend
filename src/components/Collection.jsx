@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+// 🟢 1. เพิ่ม GENRE_MAP ไว้บนสุด
+const GENRE_MAP = {
+  28: "แอคชั่น", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลก", 80: "อาชญากรรม",
+  99: "สารคดี", 18: "ดราม่า", 10751: "ครอบครัว", 14: "แฟนตาซี", 36: "ประวัติศาสตร์",
+  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับ", 10749: "โรแมนติก", 878: "ไซไฟ",
+  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
+};
+
 export default function Collection() {
   const [likedMovies, setLikedMovies] = useState([]);
   const [dislikedMovies, setDislikedMovies] = useState([]);
@@ -17,7 +25,6 @@ export default function Collection() {
     const API_KEY = "181edc5801db6678de6ccb2864149a6a";
     const promises = items.map(async (item) => {
       try {
-        // 🟢 ใช้ media_type จากฐานข้อมูลโดยตรง ถ้าไม่มีให้เดาว่าเป็น movie ไว้ก่อน
         const type = item.media_type === 'tv' ? 'tv' : 'movie';
         
         let res = await fetch(`https://api.themoviedb.org/3/${type}/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
@@ -27,7 +34,6 @@ export default function Collection() {
           return { ...data, film_id: item.film_id, media_type: type };
         }
         
-        // แผนสำรอง: เผื่อฐานข้อมูลเซฟประเภทผิด ก็ให้ลองดึงอีกประเภทนึงแทน
         const fallbackType = type === 'movie' ? 'tv' : 'movie';
         let fallbackRes = await fetch(`https://api.themoviedb.org/3/${fallbackType}/${item.film_id}?api_key=${API_KEY}&language=th-TH`);
         let fallbackData = await fallbackRes.json();
@@ -55,7 +61,6 @@ export default function Collection() {
       
       const allLikes = res.data || [];
       
-      // 🟢 แก้ไข: แนบ media_type ไปด้วยตอนกรองข้อมูล เพื่อไม่ให้ข้อมูลหาย
       const likedList = allLikes
         .filter(item => item.action === 'like')
         .map(item => ({ film_id: item.movie_id, media_type: item.media_type }));
@@ -78,13 +83,39 @@ export default function Collection() {
 
   useEffect(() => { loadData(); }, []);
 
-  const removeMovie = async (film_id) => {
+  // 🟢 2. แก้ฟังก์ชัน removeMovie ให้คำนวณหัก/คืน 5 แต้ม
+  const removeMovie = async (item) => {
     const token = localStorage.getItem('cinematch_token');
     try {
+      // จัดการหัก/คืนคะแนน
+      if (item.genres) {
+        let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
+        if (!prefs.genreWeights) prefs.genreWeights = {};
+
+        item.genres.forEach(g => {
+          const genreName = GENRE_MAP[g.id];
+          if (genreName) {
+            if (activeTab === 'like') {
+              // ลบออกจากรายการโปรด หัก 5 แต้ม
+              prefs.genreWeights[genreName] = Math.max(0, (prefs.genreWeights[genreName] || 0) - 5); 
+            }
+          }
+        });
+        
+        localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
+
+        axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
+          { genreWeights: prefs.genreWeights },
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).catch(err => console.error("Pref Sync Error:", err));
+      }
+
+      // ส่งคำสั่งลบออกจากคอลเลกชันใน user_likes
       await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', 
-        { movie_id: film_id, action: 'remove' }, 
+        { movie_id: item.film_id, action: 'remove' }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
       toast.success('นำออกจากรายการแล้ว');
       loadData(); 
     } catch (err) {
@@ -98,7 +129,6 @@ export default function Collection() {
 
     try {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-      // 🟢 ป้องกันกรณีไม่มี media_type
       const type = item.media_type || (item.first_air_date ? 'tv' : 'movie');
       
       const thRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id || item.film_id}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
@@ -188,7 +218,8 @@ export default function Collection() {
           </div>
 
           <button 
-            onClick={(e) => { e.stopPropagation(); removeMovie(item.film_id); }} 
+            // 🟢 3. เปลี่ยนจาก item.film_id เป็น item ทั้งก้อนเพื่อให้ได้ข้อมูล genres
+            onClick={(e) => { e.stopPropagation(); removeMovie(item); }} 
             className="absolute top-2 left-2 bg-[#8C0902]/90 hover:bg-[#8C0902] text-white w-7 h-7 rounded-full flex justify-center items-center z-10 backdrop-blur-sm transition-transform hover:scale-110 shadow-md"
             title="นำออกจากคอลเลกชัน"
           >
