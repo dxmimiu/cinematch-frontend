@@ -118,10 +118,10 @@ export default function MovieSearch({ currentUser }) {
     const token = localStorage.getItem('cinematch_token');
 
     try {
-        const res = await axios.post('[https://cinematch-backend-hdvz.onrender.com/api/ai-search](https://cinematch-backend-hdvz.onrender.com/api/ai-search)', 
-            { query: currentQuery, conversation_id: conversationId }, 
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
+          { query: currentQuery, conversation_id: conversationId }, 
+          { headers: { Authorization: `Bearer ${token}` } }
+      );
 
         let rawMessage = res.data.ai_message || "";
         let aiSuggestedMovies = res.data.movies || [];
