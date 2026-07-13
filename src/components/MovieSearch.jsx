@@ -42,7 +42,6 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
-  // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
@@ -57,7 +56,6 @@ export default function MovieSearch({ currentUser }) {
             const rawId = item.id || item.film_id;
             const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
 
-            // 1. สั่งบันทึกลงตาราง user_likes "ก่อน" 
             const payload = {
                 movie_id: finalMovieId,
                 action: isLike ? 'like' : 'dislike',
@@ -72,7 +70,6 @@ export default function MovieSearch({ currentUser }) {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // 2. อัปเดตคะแนน Preferences (ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น)
             if (item.genre_ids && isLike) {
                 let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
                 if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -88,13 +85,11 @@ export default function MovieSearch({ currentUser }) {
 
                 await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` }
-                });
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
             }
 
             toast.success(isLike ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
-            
-            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
@@ -126,7 +121,7 @@ export default function MovieSearch({ currentUser }) {
         let rawMessage = res.data.ai_message || "";
         let aiSuggestedMovies = res.data.movies || [];
 
-        // 🟢 1. สกัด JSON ออกจากข้อความดิบ และลบทิ้งจากข้อความที่จะแสดงบนจอ
+        // 1. สกัด JSON ออกจากข้อความดิบ
         const jsonRegex = /```(?:json)?\s*(\[\s*\{[\s\S]*\}\s*\])\s*```/i; 
         const arrayRegex = /(\[\s*\{[\s\S]*\}\s*\])/; 
 
@@ -156,7 +151,7 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 🟢 2. ใช้ ID ที่ได้จาก AI ไปดึงข้อมูลตรงๆ
+        // 2. ใช้ ID ที่ได้จาก AI ไปดึงข้อมูลตรงๆ
         if (aiSuggestedMovies.length > 0) {
             const API_KEY = "181edc5801db6678de6ccb2864149a6a";
             const fetchedDetails = await Promise.all(
@@ -168,10 +163,10 @@ export default function MovieSearch({ currentUser }) {
                         const type = rawId.startsWith('tv-') ? 'tv' : 'movie';
                         const tmdbId = rawId.replace(/^(mv-|tv-)/, '');
 
-                        // ดึงข้อมูลแบบละเอียดมาแสดงผลโดยใช้ ID
+                        // 🟢 แก้ไข URL ตรงนี้ให้ถูกต้อง ไม่มีวงเล็บ
                         const detailUrl = type === 'tv' 
-                          ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                          : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                          ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                          : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                         
                         const detailRes = await fetch(detailUrl);
                         if (!detailRes.ok) return null;
@@ -212,7 +207,7 @@ export default function MovieSearch({ currentUser }) {
             // กรอง null ออก แสดงเฉพาะเรื่องที่หาเจอ
             setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
         } else {
-            // Fallback กรณีหา JSON ไม่เจอจริงๆ (หาจากแท็ก <search>)
+            // Fallback (เผื่อว่า AI ลืมส่ง JSON มาให้)
             const extractedQueries = [];
             const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
             let match;
@@ -226,7 +221,7 @@ export default function MovieSearch({ currentUser }) {
                 const fetchedDetails = await Promise.all(
                     finalQueries.map(async (query) => { 
                         try {
-                            const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
+                            const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
                             const searchRes = await fetch(searchUrl);
                             const searchData = await searchRes.json();
                             
@@ -234,6 +229,7 @@ export default function MovieSearch({ currentUser }) {
                                 const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
                                 if (mediaResult) {
                                     const type = mediaResult.media_type;
+                                    const tmdbId = mediaResult.id;
                                     const detailUrl = type === 'tv' 
                                       ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
                                       : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
@@ -241,9 +237,7 @@ export default function MovieSearch({ currentUser }) {
                                     const detailRes = await fetch(detailUrl);
                                     const detailData = await detailRes.json();
                                     
-                                    let ageRating = "NR";
-                                    // ละไว้ฐานที่เข้าใจ...
-                                    return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: ageRating };
+                                    return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: "NR" };
                                 }
                             }
                             return null;
