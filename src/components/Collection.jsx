@@ -220,9 +220,9 @@ export default function Collection({ currentUser }) {
                      </div>
                   </div>
 
-                  <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-center z-20">
-                    <button onClick={(e) => handleRemoveFromCollection(e, item)} className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md bg-white/90 text-red-500 hover:bg-red-50 hover:text-red-600 hover:scale-110">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <div className="absolute top-2 left-2 z-20">
+                    <button onClick={(e) => handleRemoveFromCollection(e, item)} className="w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md bg-white/90 text-red-500 hover:bg-red-50 hover:text-red-600 hover:scale-110">
+                      <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
