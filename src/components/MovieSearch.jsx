@@ -112,14 +112,37 @@ export default function MovieSearch({ currentUser }) {
     const token = localStorage.getItem('cinematch_token');
 
     try {
-        const res = await axios.post('https://cinematch-backend-hdvz.onrender.com/api/ai-search', 
+        const res = await axios.post('[https://cinematch-backend-hdvz.onrender.com/api/ai-search](https://cinematch-backend-hdvz.onrender.com/api/ai-search)', 
             { query: currentQuery, conversation_id: conversationId }, 
             { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        const rawMessage = res.data.ai_message || "";
-        
-        // ล้างแท็ก <search> ทิ้งเพื่อให้ข้อความเนียนตา
+        let rawMessage = res.data.ai_message || "";
+        let aiSuggestedMovies = res.data.movies || [];
+
+        // 🟢 1. สกัด JSON ออกจากข้อความดิบ และลบทิ้งจากข้อความที่จะแสดงบนจอ
+        const jsonRegex = /```(?:json)?\s*(\[\s*\{[\s\S]*\}\s*\])\s*```/i; 
+        const arrayRegex = /(\[\s*\{[\s\S]*\}\s*\])/; 
+
+        let jsonString = null;
+        if (jsonRegex.test(rawMessage)) {
+            jsonString = rawMessage.match(jsonRegex)[1];
+            rawMessage = rawMessage.replace(jsonRegex, ''); 
+        } else if (arrayRegex.test(rawMessage)) {
+            jsonString = rawMessage.match(arrayRegex)[1];
+            rawMessage = rawMessage.replace(arrayRegex, ''); 
+        }
+
+        // แปลงเป็น Object หากสกัดข้อความ JSON ออกมาได้
+        if (jsonString && aiSuggestedMovies.length === 0) {
+            try {
+                aiSuggestedMovies = JSON.parse(jsonString);
+            } catch (err) {
+                console.error("Frontend JSON Parse Error:", err);
+            }
+        }
+
+        // ล้างแท็ก <search> และตัดช่องว่างส่วนเกิน
         let cleanAiMessage = rawMessage
             .replace(/<search>.*?<\/search>/gi, '') 
             .replace(/!\[.*?\]\(.*?\)/g, '');
@@ -127,24 +150,36 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 🟢 1. ใช้ ID ที่ได้มาจาก JSON ของ Backend (มี Prefix แล้ว)
-        const aiSuggestedMovies = res.data.movies || [];
-
+        // 🟢 2. ค้นหาข้อมูลภาพยนตร์จากชื่อภาษาอังกฤษ เพื่อเอา ID ของจริง (แก้ปัญหา 404)
         if (aiSuggestedMovies.length > 0) {
             const API_KEY = "181edc5801db6678de6ccb2864149a6a";
             const fetchedDetails = await Promise.all(
                 aiSuggestedMovies.map(async (aiMovie) => {
                     try {
-                        const rawId = String(aiMovie.id);
-                        
-                        // 🟢 2. แยกประเภทจาก Prefix และหั่น Prefix ทิ้งให้เหลือแค่ตัวเลข
-                        const type = rawId.startsWith('tv-') ? 'tv' : 'movie';
-                        const tmdbId = rawId.replace(/^(mv-|tv-)/, '');
+                        const searchTitle = aiMovie.title_en || aiMovie.title || "";
+                        if (!searchTitle) return null;
 
-                        // 🟢 3. เลือก Endpoint ให้ถูกต้องตามประเภท
+                        // เอาชื่อไปค้นหาใน TMDB เพื่อดึง ID ตัวจริง
+                        const searchUrl = `[https://api.themoviedb.org/3/search/multi?api_key=$](https://api.themoviedb.org/3/search/multi?api_key=$){API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
+                        const searchRes = await fetch(searchUrl);
+                        const searchData = await searchRes.json();
+
+                        if (!searchData.results || searchData.results.length === 0) return null;
+
+                        // เอาผลลัพธ์แรกที่เป็น movie หรือ tv (และตรงกับ type ที่ AI ส่งมาถ้ามี)
+                        const mediaResult = searchData.results.find(r => 
+                            aiMovie.type ? r.media_type === aiMovie.type : (r.media_type === 'movie' || r.media_type === 'tv')
+                        ) || searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
+
+                        if (!mediaResult) return null;
+
+                        const type = mediaResult.media_type;
+                        const tmdbId = mediaResult.id;
+
+                        // 🟢 3. ดึงข้อมูลแบบละเอียดมาแสดงผล
                         const detailUrl = type === 'tv' 
-                          ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                          : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                          ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                          : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                         
                         const detailRes = await fetch(detailUrl);
                         if (!detailRes.ok) return null;
@@ -170,7 +205,13 @@ export default function MovieSearch({ currentUser }) {
                             ageRating = cert || "NR";
                         }
                         
-                        return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: ageRating };
+                        return { 
+                            ...detailData, 
+                            media_type: type, 
+                            genre_ids: detailData.genres?.map(g => g.id) || [], 
+                            age_rating: ageRating,
+                            ai_reason: aiMovie.reason || "" 
+                        };
                     } catch (err) { 
                         return null; 
                     }
@@ -179,7 +220,7 @@ export default function MovieSearch({ currentUser }) {
             // กรอง null ออก แสดงเฉพาะเรื่องที่หาเจอ
             setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
         } else {
-            // Fallback เผื่อ AI ไม่ได้ส่ง JSON มา (ใช้วิธีค้นหาจากข้อความในแท็ก <search> เหมือนเดิม)
+            // Fallback กรณีหา JSON ไม่เจอจริงๆ (หาจากแท็ก <search>)
             const extractedQueries = [];
             const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
             let match;
@@ -193,7 +234,7 @@ export default function MovieSearch({ currentUser }) {
                 const fetchedDetails = await Promise.all(
                     finalQueries.map(async (query) => { 
                         try {
-                            const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
+                            const searchUrl = `[https://api.themoviedb.org/3/search/multi?api_key=$](https://api.themoviedb.org/3/search/multi?api_key=$){API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
                             const searchRes = await fetch(searchUrl);
                             const searchData = await searchRes.json();
                             
@@ -202,14 +243,14 @@ export default function MovieSearch({ currentUser }) {
                                 if (mediaResult) {
                                     const type = mediaResult.media_type;
                                     const detailUrl = type === 'tv' 
-                                      ? `https://api.themoviedb.org/3/tv/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                                      : `https://api.themoviedb.org/3/movie/${mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                                      ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                                      : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                                     
                                     const detailRes = await fetch(detailUrl);
                                     const detailData = await detailRes.json();
                                     
                                     let ageRating = "NR";
-                                    // ... [ส่วนดึงเรทอายุเหมือนด้านบน]
+                                    // ละไว้ฐานที่เข้าใจ...
                                     return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: ageRating };
                                 }
                             }
