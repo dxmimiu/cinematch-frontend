@@ -166,7 +166,7 @@ export default function MovieSearch({ currentUser }) {
                         if (!searchTitle) return null;
 
                         // เอาชื่อไปค้นหาใน TMDB เพื่อดึง ID ตัวจริง
-                        const searchUrl = `[https://api.themoviedb.org/3/search/multi?api_key=$](https://api.themoviedb.org/3/search/multi?api_key=$){API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
+                        const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
                         const searchRes = await fetch(searchUrl);
                         const searchData = await searchRes.json();
 
@@ -184,8 +184,8 @@ export default function MovieSearch({ currentUser }) {
 
                         // 🟢 3. ดึงข้อมูลแบบละเอียดมาแสดงผล
                         const detailUrl = type === 'tv' 
-                          ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                          : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                          ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                          : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                         
                         const detailRes = await fetch(detailUrl);
                         if (!detailRes.ok) return null;
@@ -240,7 +240,7 @@ export default function MovieSearch({ currentUser }) {
                 const fetchedDetails = await Promise.all(
                     finalQueries.map(async (query) => { 
                         try {
-                            const searchUrl = `[https://api.themoviedb.org/3/search/multi?api_key=$](https://api.themoviedb.org/3/search/multi?api_key=$){API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
+                            const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
                             const searchRes = await fetch(searchUrl);
                             const searchData = await searchRes.json();
                             
@@ -249,8 +249,8 @@ export default function MovieSearch({ currentUser }) {
                                 if (mediaResult) {
                                     const type = mediaResult.media_type;
                                     const detailUrl = type === 'tv' 
-                                      ? `[https://api.themoviedb.org/3/tv/$](https://api.themoviedb.org/3/tv/$){mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                                      : `[https://api.themoviedb.org/3/movie/$](https://api.themoviedb.org/3/movie/$){mediaResult.id}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                                      ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                                      : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
                                     
                                     const detailRes = await fetch(detailUrl);
                                     const detailData = await detailRes.json();
