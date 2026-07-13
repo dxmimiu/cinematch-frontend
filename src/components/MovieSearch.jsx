@@ -42,15 +42,37 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
-  // ฟังก์ชันจัดการการกด Like / Dislike
+  // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
         try {
             const token = localStorage.getItem('cinematch_token');
+            if (!token) {
+                toast.error("กรุณาล็อกอินก่อนใช้งาน");
+                return;
+            }
+
             const isLike = type === 'like';
-            
-            // 🟢 1. อัปเดตคะแนน (ทำเฉพาะตอน Like เท่านั้น)
+            const rawId = item.id || item.film_id;
+            const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
+
+            // 1. สั่งบันทึกลงตาราง user_likes "ก่อน" 
+            const payload = {
+                movie_id: finalMovieId,
+                action: isLike ? 'like' : 'dislike',
+                media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+                movie_title: item.title || item.name,
+                poster_path: item.poster_path,
+                genres: item.genre_ids ? item.genre_ids.join(',') : '',
+                points: isLike ? 5 : 0 
+            };
+
+            await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            // 2. อัปเดตคะแนน Preferences (ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น)
             if (item.genre_ids && isLike) {
                 let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
                 if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -64,35 +86,19 @@ export default function MovieSearch({ currentUser }) {
                 
                 localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
-                axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
+                await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` } }
-                ).catch(err => console.error("Pref Sync Error:", err));
+                    { headers: { Authorization: `Bearer ${token}` }
+                });
             }
-
-            // 🟢 2. บันทึกเข้าคอลเลกชัน
-            const payload = {
-                film_id: item.id,
-                film_title: item.title || item.name,
-                poster_path: item.poster_path,
-                type: type,
-                media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
-                genres: item.genre_ids ? item.genre_ids.join(',') : '',
-                points: isLike ? 5 : 0 
-            };
-
-            await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
 
             toast.success(isLike ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
             
-            // ถ้าหน้าไหนมี setResults สำหรับเตะการ์ดออก ก็คงบรรทัดนั้นไว้ครับ (เช่น SearchPage, MovieSearch)
-            // setResults(prev => prev.filter(movie => movie.id !== item.id));
+            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
-            toast.error("เกิดข้อผิดพลาดในการเซฟลงฐานข้อมูล");
+            toast.error("เกิดข้อผิดพลาดในการเซฟข้อมูล ลองอีกครั้งค่ะ");
         }
     };
 
