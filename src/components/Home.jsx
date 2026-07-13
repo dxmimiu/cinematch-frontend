@@ -2,6 +2,13 @@ import toast from 'react-hot-toast';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
+const GENRE_MAP = {
+  28: "แอคชั่น", 12: "ผจญภัย", 16: "แอนิเมชัน", 35: "ตลก", 80: "อาชญากรรม",
+  99: "สารคดี", 18: "ดราม่า", 10751: "ครอบครัว", 14: "แฟนตาซี", 36: "ประวัติศาสตร์",
+  27: "สยองขวัญ", 10402: "มิวสิคัล", 9648: "ลึกลับ", 10749: "โรแมนติก", 878: "ไซไฟ",
+  10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
+};
+
 export default function Home({ setStep, currentUser, userPreferences }) {
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingTVs, setTrendingTVs] = useState([]);
