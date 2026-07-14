@@ -10,6 +10,96 @@ const GENRE_MAP = {
   10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
 };
 
+const getRawTmdbId = (itemOrId) => {
+  const value = typeof itemOrId === 'object' && itemOrId !== null
+    ? (itemOrId.tmdb_id ?? itemOrId.movie_id ?? itemOrId.film_id ?? itemOrId.id)
+    : itemOrId;
+
+  return String(value ?? '').replace(/^(mv-|tv-)/i, '');
+};
+
+const getMediaType = (item) => {
+  if (!item) return 'movie';
+  if (item.type === 'tv' || item.media_type === 'tv' || String(item.id || '').startsWith('tv-')) return 'tv';
+  if (item.type === 'movie' || item.media_type === 'movie' || String(item.id || '').startsWith('mv-')) return 'movie';
+  return item.first_air_date ? 'tv' : 'movie';
+};
+
+const normalizeTitle = (value = '') => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/&/g, ' and ')
+  .replace(/[^a-z0-9ก-๙]+/g, ' ')
+  .trim()
+  .replace(/^(the|a|an)\s+/, '');
+
+const getTitleMatchScore = (result, requestedTitle) => {
+  const requested = normalizeTitle(requestedTitle);
+  if (!requested) return 0;
+
+  const candidateTitles = [
+    result.title,
+    result.original_title,
+    result.name,
+    result.original_name
+  ].filter(Boolean).map(normalizeTitle);
+
+  if (candidateTitles.some(title => title === requested)) return 100;
+  if (candidateTitles.some(title => title.includes(requested) || requested.includes(title))) return 85;
+
+  const requestedTokens = new Set(requested.split(' ').filter(Boolean));
+  let bestTokenScore = 0;
+
+  candidateTitles.forEach(title => {
+    const titleTokens = new Set(title.split(' ').filter(Boolean));
+    const intersection = [...requestedTokens].filter(token => titleTokens.has(token)).length;
+    const union = new Set([...requestedTokens, ...titleTokens]).size || 1;
+    bestTokenScore = Math.max(bestTokenScore, (intersection / union) * 70);
+  });
+
+  return bestTokenScore;
+};
+
+const extractRecommendationJson = (message = '') => {
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let match;
+
+  while ((match = codeBlockRegex.exec(message)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (Array.isArray(parsed)) {
+        return {
+          recommendations: parsed,
+          cleanMessage: message.replace(match[0], '')
+        };
+      }
+    } catch (_) {
+      // ข้าม code block ที่ไม่ใช่ JSON
+    }
+  }
+
+  const firstBracket = message.indexOf('[');
+  const lastBracket = message.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const possibleJson = message.slice(firstBracket, lastBracket + 1);
+    try {
+      const parsed = JSON.parse(possibleJson);
+      if (Array.isArray(parsed)) {
+        return {
+          recommendations: parsed,
+          cleanMessage: `${message.slice(0, firstBracket)}${message.slice(lastBracket + 1)}`
+        };
+      }
+    } catch (_) {
+      // ไม่มี JSON ที่ parse ได้
+    }
+  }
+
+  return { recommendations: [], cleanMessage: message };
+};
+
+
 export default function MovieSearch({ currentUser }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMovies, setSearchMovies] = useState([]);
@@ -55,15 +145,15 @@ export default function MovieSearch({ currentUser }) {
 
             const isLike = type === 'like';
             // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
-            const rawId = item.id || item.film_id;
-            const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
+            const finalMovieId = getRawTmdbId(item);
+            const itemMediaType = getMediaType(item);
             
             // เตรียมข้อมูลให้ครบตามตาราง user_likes 
             // 🟢 นี่คือจุดที่ทำให้ Backend ยอมรับข้อมูล
             const payload = {
                 movie_id: finalMovieId, 
                 action: isLike ? 'like' : 'dislike',
-                media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+                media_type: itemMediaType,
                 movie_title: item.title || item.name || "ไม่ทราบชื่อ",
                 poster_path: item.poster_path || "",
                 genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่งเป็น String แบบ "28,12"
@@ -96,13 +186,18 @@ export default function MovieSearch({ currentUser }) {
             }
 
             // 3. อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
+            const isSameMedia = (savedItem) => (
+                getRawTmdbId(savedItem) === finalMovieId &&
+                getMediaType(savedItem) === itemMediaType
+            );
+
             if (isLike) {
-                setLikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
-                setDislikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
+                setLikedMovies(prev => [...prev.filter(m => !isSameMedia(m)), { ...payload, movie_id: finalMovieId }]);
+                setDislikedMovies(prev => prev.filter(m => !isSameMedia(m)));
                 toast.success('เพิ่มลงในรายการโปรดแล้ว');
             } else {
-                setDislikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
-                setLikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
+                setDislikedMovies(prev => [...prev.filter(m => !isSameMedia(m)), { ...payload, movie_id: finalMovieId }]);
+                setLikedMovies(prev => prev.filter(m => !isSameMedia(m)));
                 toast.success('ซ่อนหนังเรื่องนี้แล้ว');
             }
             
@@ -114,8 +209,13 @@ export default function MovieSearch({ currentUser }) {
         }
     };
 
-  const checkIsLiked = (id) => likedMovies.some(m => m.film_id === id || m.id === id);
-  const checkIsDisliked = (id) => dislikedMovies.some(m => m.film_id === id || m.id === id);
+  const isSameMediaItem = (savedItem, currentItem) => (
+    getRawTmdbId(savedItem) === getRawTmdbId(currentItem) &&
+    getMediaType(savedItem) === getMediaType(currentItem)
+  );
+
+  const checkIsLiked = (item) => likedMovies.some(m => isSameMediaItem(m, item));
+  const checkIsDisliked = (item) => dislikedMovies.some(m => isSameMediaItem(m, item));
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -136,126 +236,201 @@ export default function MovieSearch({ currentUser }) {
       );
 
         let rawMessage = res.data.ai_message || "";
-        let aiSuggestedMovies = res.data.movies || [];
+        const backendMovies = Array.isArray(res.data.movies) ? res.data.movies : [];
 
-        // 1. สกัด JSON ออกจากข้อความดิบ
-        const jsonRegex = /```(?:json)?\s*(\[\s*\{[\s\S]*\}\s*\])\s*```/i; 
-        const arrayRegex = /(\[\s*\{[\s\S]*\}\s*\])/; 
+        // ให้ JSON ที่มากับคำตอบ AI เป็นแหล่งข้อมูลหลัก เพื่อให้ข้อความและการ์ดมาจากชุดเดียวกัน
+        const extracted = extractRecommendationJson(rawMessage);
+        rawMessage = extracted.cleanMessage;
+        const aiSuggestedMovies = extracted.recommendations.length > 0
+          ? extracted.recommendations
+          : backendMovies;
 
-        let jsonString = null;
-        if (jsonRegex.test(rawMessage)) {
-            jsonString = rawMessage.match(jsonRegex)[1];
-            rawMessage = rawMessage.replace(jsonRegex, ''); 
-        } else if (arrayRegex.test(rawMessage)) {
-            jsonString = rawMessage.match(arrayRegex)[1];
-            rawMessage = rawMessage.replace(arrayRegex, ''); 
+        // เก็บแท็ก <search> ก่อนล้างออก เผื่อ Backend ไม่ส่ง JSON กลับมา
+        const tagRecommendations = [];
+        const tagYearByTitle = new Map();
+        const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
+        let searchMatch;
+        while ((searchMatch = searchRegex.exec(rawMessage)) !== null) {
+          const titleFromTag = searchMatch[1].trim();
+          const lineStart = rawMessage.lastIndexOf('\n', searchMatch.index) + 1;
+          const lineEndCandidate = rawMessage.indexOf('\n', searchRegex.lastIndex);
+          const lineEnd = lineEndCandidate === -1 ? rawMessage.length : lineEndCandidate;
+          const sameLine = rawMessage.slice(lineStart, lineEnd);
+          const yearMatch = sameLine.match(/(?:-|–|—)\s*((?:19|20)\d{2})/);
+          const detectedYear = yearMatch?.[1] || '';
+
+          tagRecommendations.push({
+            title_en: titleFromTag,
+            type: 'multi',
+            reason: '',
+            year: detectedYear
+          });
+
+          if (detectedYear) {
+            tagYearByTitle.set(normalizeTitle(titleFromTag), detectedYear);
+          }
         }
 
-        // แปลงเป็น Object
-        if (jsonString && aiSuggestedMovies.length === 0) {
-            try {
-                aiSuggestedMovies = JSON.parse(jsonString);
-            } catch (err) {
-                console.error("Frontend JSON Parse Error:", err);
-            }
-        }
+        const cleanAiMessage = rawMessage
+          .replace(/<search>.*?<\/search>/gi, '')
+          .replace(/!\[.*?\]\(.*?\)/g, '');
 
-        // ล้างแท็ก <search> และตัดช่องว่างส่วนเกิน
-        let cleanAiMessage = rawMessage
-            .replace(/<search>.*?<\/search>/gi, '') 
-            .replace(/!\[.*?\]\(.*?\)/g, '');
-            
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 🟢 2. ใช้ "ชื่อเรื่อง" ไปค้นหา ID จริงๆ (แก้ปัญหา AI เดารหัสผิดแล้วการ์ดไม่ตรง)
-        let searchQueries = [];
-        
-        // ก. พยายามดึงชื่อหนังจาก JSON ก่อน
-        if (aiSuggestedMovies.length > 0) {
-            searchQueries = aiSuggestedMovies.map(m => ({
-                title: m.title_en || m.title,
-                type: m.type === 'tv' ? 'tv' : 'movie',
-                reason: m.reason || ""
-            })).filter(m => m.title);
-        } 
-        
-        // ข. ถ้า JSON ไม่มีชื่อ ให้สกัดจากแท็ก <search> แทน (กันเหนียว)
+        const sourceRecommendations = aiSuggestedMovies.length > 0
+          ? aiSuggestedMovies
+          : tagRecommendations;
+
+        const searchQueries = sourceRecommendations
+          .map(movie => {
+            const idText = String(movie.id || '');
+            const inferredType = movie.type === 'tv' || movie.media_type === 'tv' || idText.startsWith('tv-')
+              ? 'tv'
+              : movie.type === 'movie' || movie.media_type === 'movie' || idText.startsWith('mv-')
+                ? 'movie'
+                : 'multi';
+            const title = movie.title_en || movie.title || movie.name || movie.original_title || movie.original_name;
+            const yearFromText = tagYearByTitle.get(normalizeTitle(title)) || '';
+
+            return {
+              title,
+              type: inferredType,
+              expectedId: getRawTmdbId(movie),
+              reason: movie.reason || '',
+              year: String(movie.year || movie.release_year || yearFromText || '').trim()
+            };
+          })
+          .filter(movie => movie.title)
+          .slice(0, 3);
+
         if (searchQueries.length === 0) {
-            const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
-            let match;
-            while ((match = searchRegex.exec(rawMessage)) !== null) {
-                searchQueries.push({ title: match[1].trim(), type: 'multi', reason: '' });
+          setSearchMovies([]);
+          return;
+        }
+
+        const API_KEY = "181edc5801db6678de6ccb2864149a6a";
+
+        const fetchJson = async (url) => {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          return response.json();
+        };
+
+        const fetchDetail = async (type, id, language = 'th-TH') => {
+          const append = type === 'tv' ? 'content_ratings' : 'release_dates';
+          return fetchJson(
+            `https://api.themoviedb.org/3/${type}/${id}?api_key=${API_KEY}&language=${language}&append_to_response=${append}`
+          );
+        };
+
+        const resolveRecommendation = async (queryObj) => {
+          try {
+            let realType = queryObj.type !== 'multi' ? queryObj.type : null;
+            let verifiedResult = null;
+
+            // 1) ลองใช้ ID ที่ AI ส่งมา แต่รับเฉพาะเมื่อชื่อจาก TMDB ตรงกับ title_en จริง
+            if (queryObj.expectedId && realType) {
+              const idResult = await fetchDetail(realType, queryObj.expectedId, 'en-US');
+              if (idResult && getTitleMatchScore(idResult, queryObj.title) === 100) {
+                verifiedResult = idResult;
+              }
             }
-        }
 
-        // ค. เอาชื่อเรื่องไปค้นหาใน TMDB เพื่อดึงการ์ดที่ตรงกัน 100%
-        if (searchQueries.length > 0) {
-            const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-            const fetchedDetails = await Promise.all(
-                searchQueries.slice(0, 3).map(async (queryObj) => {
-                    try {
-                        // 1. ค้นหาหา ID จริงจากชื่อเรื่อง
-                        const searchUrl = queryObj.type === 'multi' 
-                            ? `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(queryObj.title)}`
-                            : `https://api.themoviedb.org/3/search/${queryObj.type}?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(queryObj.title)}`;
-                        
-                        const searchRes = await fetch(searchUrl);
-                        const searchData = await searchRes.json();
-                        
-                        if (!searchData.results || searchData.results.length === 0) return null;
-                        
-                        // เอาผลลัพธ์แรกที่ใกล้เคียงที่สุด
-                        const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || searchData.results[0];
-                        if (!mediaResult) return null;
+            // 2) เมื่อ ID ผิดหรือไม่มี ID ให้ค้นหาด้วยชื่อและจัดอันดับจากความตรงของชื่อ
+            if (!verifiedResult) {
+              const searchEndpoints = realType ? [realType, 'multi'] : ['multi'];
+              const candidateMap = new Map();
 
-                        const realType = mediaResult.media_type || (queryObj.type !== 'multi' ? queryObj.type : 'movie');
-                        const realId = mediaResult.id;
+              for (const searchEndpoint of searchEndpoints) {
+                const searchData = await fetchJson(
+                  `https://api.themoviedb.org/3/search/${searchEndpoint}?api_key=${API_KEY}&language=en-US&include_adult=false&query=${encodeURIComponent(queryObj.title)}`
+                );
 
-                        // 2. เอา ID จริงไปดึงข้อมูลแบบละเอียด
-                        const detailUrl = realType === 'tv' 
-                            ? `https://api.themoviedb.org/3/tv/${realId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                            : `https://api.themoviedb.org/3/movie/${realId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                        
-                        const detailRes = await fetch(detailUrl);
-                        if (!detailRes.ok) return null;
-                        const detailData = await detailRes.json();
-                        
-                        // หาเรทติ้งอายุ
-                        let ageRating = "NR";
-                        if (realType === 'tv') {
-                            let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') || detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
-                            if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
-                                ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1)) || detailData.content_ratings.results[0];
-                            }
-                            ageRating = ratingObj?.rating || "NR";
-                        } else {
-                            let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH') || detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
-                            if (!releaseObj && detailData.release_dates?.results?.length > 0) {
-                                const originCountries = detailData.production_countries?.map(c => c.iso_3166_1) || [];
-                                releaseObj = detailData.release_dates.results.find(r => originCountries.includes(r.iso_3166_1)) || detailData.release_dates.results[0];
-                            }
-                            const cert = releaseObj?.release_dates?.find(rd => rd.certification !== "")?.certification;
-                            ageRating = cert || "NR";
-                        }
-                        
-                        // 3. ประกอบร่างข้อมูลกลับไป พร้อมเติม Prefix ให้เหมือนเดิมเป๊ะ (mv- / tv-)
-                        return { 
-                            ...detailData, 
-                            id: `${realType === 'tv' ? 'tv-' : 'mv-'}${detailData.id}`, 
-                            media_type: realType, 
-                            genre_ids: detailData.genres?.map(g => g.id) || [], 
-                            age_rating: ageRating,
-                            ai_reason: queryObj.reason 
-                        };
-                    } catch (err) { 
-                        return null; 
-                    }
-                })
-            );
-            // กรอง null ออก แสดงเฉพาะเรื่องที่หาเจอ
-            setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
-        }
+                (searchData?.results || [])
+                  .map(result => ({
+                    ...result,
+                    media_type: result.media_type || (searchEndpoint !== 'multi' ? searchEndpoint : realType),
+                    matchScore: getTitleMatchScore(result, queryObj.title)
+                  }))
+                  .filter(result => ['movie', 'tv'].includes(result.media_type))
+                  .filter(result => result.matchScore >= 85)
+                  .forEach(result => {
+                    candidateMap.set(`${result.media_type}-${result.id}`, result);
+                  });
+              }
+
+              const candidates = [...candidateMap.values()].sort((a, b) => {
+                const yearA = (a.release_date || a.first_air_date || '').slice(0, 4);
+                const yearB = (b.release_date || b.first_air_date || '').slice(0, 4);
+                const yearBonusA = queryObj.year && yearA === queryObj.year ? 20 : 0;
+                const yearBonusB = queryObj.year && yearB === queryObj.year ? 20 : 0;
+                const typeBonusA = realType && a.media_type === realType ? 5 : 0;
+                const typeBonusB = realType && b.media_type === realType ? 5 : 0;
+                return (b.matchScore + yearBonusB + typeBonusB + (b.popularity || 0) / 1000)
+                  - (a.matchScore + yearBonusA + typeBonusA + (a.popularity || 0) / 1000);
+              });
+
+              const bestResult = candidates[0];
+              if (!bestResult) {
+                console.warn(`TMDB exact match not found: ${queryObj.title}`);
+                return null;
+              }
+
+              realType = bestResult.media_type;
+              verifiedResult = bestResult;
+            }
+
+            const realId = verifiedResult.id;
+            let detailData = await fetchDetail(realType, realId, 'th-TH');
+            if (!detailData) return null;
+
+            // ภาษาไทยบางเรื่องไม่มีชื่อ/เรื่องย่อ จึงเติมจาก en-US เฉพาะช่องที่ขาด
+            const englishDetail = await fetchDetail(realType, realId, 'en-US');
+            if (englishDetail) {
+              if (!detailData.overview) detailData.overview = englishDetail.overview;
+              if (realType === 'tv' && !detailData.name) detailData.name = englishDetail.name;
+              if (realType === 'movie' && !detailData.title) detailData.title = englishDetail.title;
+            }
+
+            let ageRating = "NR";
+            if (realType === 'tv') {
+              let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH')
+                || detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
+              if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
+                ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1))
+                  || detailData.content_ratings.results[0];
+              }
+              ageRating = ratingObj?.rating || "NR";
+            } else {
+              let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH')
+                || detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
+              if (!releaseObj && detailData.release_dates?.results?.length > 0) {
+                const originCountries = detailData.production_countries?.map(c => c.iso_3166_1) || [];
+                releaseObj = detailData.release_dates.results.find(r => originCountries.includes(r.iso_3166_1))
+                  || detailData.release_dates.results[0];
+              }
+              ageRating = releaseObj?.release_dates?.find(rd => rd.certification)?.certification || "NR";
+            }
+
+            return {
+              ...detailData,
+              id: `${realType === 'tv' ? 'tv-' : 'mv-'}${realId}`,
+              tmdb_id: realId,
+              media_type: realType,
+              genre_ids: detailData.genres?.map(g => g.id) || [],
+              age_rating: ageRating,
+              ai_reason: queryObj.reason,
+              requested_title: queryObj.title
+            };
+          } catch (error) {
+            console.error(`Resolve recommendation failed: ${queryObj.title}`, error);
+            return null;
+          }
+        };
+
+        const fetchedDetails = await Promise.all(searchQueries.map(resolveRecommendation));
+        setSearchMovies(fetchedDetails.filter(movie => movie && movie.poster_path));
 
     } catch (error) {
         console.error("AI Routing Fail:", error);
@@ -271,13 +446,14 @@ export default function MovieSearch({ currentUser }) {
     setDetailedMovie(null); 
     try {
       const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-      const type = item.media_type || (item.first_air_date ? 'tv' : 'movie');
-      const thRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
+      const type = getMediaType(item);
+      const tmdbId = getRawTmdbId(item);
+      const thRes = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=watch/providers,credits`);
       const thData = await thRes.json();
 
       let finalOverview = thData.overview;
       if (!finalOverview) {
-        const enRes = await fetch(`https://api.themoviedb.org/3/${type}/${item.id}?api_key=${API_KEY}&language=en-US`);
+        const enRes = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${API_KEY}&language=en-US`);
         const enData = await enRes.json();
         finalOverview = enData.overview || "ไม่มีเรื่องย่อสำหรับเนื้อหานี้";
       }
@@ -403,10 +579,10 @@ export default function MovieSearch({ currentUser }) {
                           </div>
 
                           <div className="absolute bottom-2 left-0 right-0 px-2 flex justify-between z-20">
-                            <button onClick={(e) => handleVote(e, item, 'dislike')} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${checkIsDisliked(item.id) ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' : 'bg-[#8C0902]/90 text-white hover:bg-[#8C0902] hover:scale-110'}`}>
+                            <button onClick={(e) => handleVote(item, 'dislike', e)} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${checkIsDisliked(item) ? 'bg-[#8C0902] border-[#8C0902] text-white scale-110' : 'bg-[#8C0902]/90 text-white hover:bg-[#8C0902] hover:scale-110'}`}>
                               <svg className="w-4 h-4 md:w-5 md:h-5 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
                             </button>
-                            <button onClick={(e) => handleVote(e, item, 'like')} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${checkIsLiked(item.id) ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' : 'bg-[#E6A341]/90 text-[#210100] hover:bg-[#E6A341] hover:scale-110'}`}>
+                            <button onClick={(e) => handleVote(item, 'like', e)} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center shadow-lg transition-transform border border-white/20 backdrop-blur-md ${checkIsLiked(item) ? 'bg-[#E6A341] border-[#E6A341] text-[#210100] scale-110' : 'bg-[#E6A341]/90 text-[#210100] hover:bg-[#E6A341] hover:scale-110'}`}>
                               <svg className="w-4 h-4 md:w-5 md:h-5 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
                             </button>
                           </div>
