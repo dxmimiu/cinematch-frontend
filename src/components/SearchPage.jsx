@@ -18,6 +18,33 @@ export default function SearchPage() {
     const [selectedMovie, setSelectedMovie] = useState(null);
     const [detailedMovie, setDetailedMovie] = useState(null);
 
+    // เก็บสถานะ Like / Dislike เพื่อให้ handleVote อัปเดตหน้าจอได้
+    const [likedMovies, setLikedMovies] = useState([]);
+    const [dislikedMovies, setDislikedMovies] = useState([]);
+
+    // โหลดสถานะ Like / Dislike เดิมจาก Backend
+    useEffect(() => {
+        const loadUserVotes = async () => {
+            const token = localStorage.getItem('cinematch_token');
+            if (!token) return;
+
+            try {
+                const response = await axios.get(
+                    'https://cinematch-backend-hdvz.onrender.com/api/likes',
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+
+                const rows = Array.isArray(response.data) ? response.data : [];
+                setLikedMovies(rows.filter((item) => item.action === 'like'));
+                setDislikedMovies(rows.filter((item) => item.action === 'dislike'));
+            } catch (error) {
+                console.error('Error loading SearchPage votes:', error);
+            }
+        };
+
+        loadUserVotes();
+    }, []);
+
     // ป้องกันการยิง API ถี่เกินไปตอนพิมพ์ (Debounce)
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {

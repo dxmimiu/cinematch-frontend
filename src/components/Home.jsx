@@ -15,6 +15,10 @@ export default function Home({ setStep, currentUser, userPreferences }) {
 
   const [recommended, setRecommended] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
+
+  // เก็บสถานะ Like / Dislike เพื่อให้ handleVote อัปเดตหน้าจอได้
+  const [likedMovies, setLikedMovies] = useState([]);
+  const [dislikedMovies, setDislikedMovies] = useState([]);
   
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [detailedMovie, setDetailedMovie] = useState(null);
@@ -22,6 +26,29 @@ export default function Home({ setStep, currentUser, userPreferences }) {
   const movieScrollRef = useRef(null);
   const tvScrollRef = useRef(null);
   const recSmallScrollRef = useRef(null); 
+
+  // โหลดสถานะ Like / Dislike เดิมจาก Backend
+  useEffect(() => {
+    const loadUserVotes = async () => {
+      const token = localStorage.getItem('cinematch_token');
+      if (!token) return;
+
+      try {
+        const response = await axios.get(
+          'https://cinematch-backend-hdvz.onrender.com/api/likes',
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        const rows = Array.isArray(response.data) ? response.data : [];
+        setLikedMovies(rows.filter((item) => item.action === 'like'));
+        setDislikedMovies(rows.filter((item) => item.action === 'dislike'));
+      } catch (error) {
+        console.error('Error loading Home votes:', error);
+      }
+    };
+
+    loadUserVotes();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -153,6 +180,15 @@ export default function Home({ setStep, currentUser, userPreferences }) {
             toast.error("เกิดข้อผิดพลาดในการเซฟข้อมูล ลองอีกครั้งค่ะ");
         }
     };
+
+  const scroll = (scrollRef, direction) => {
+    if (!scrollRef?.current) return;
+
+    scrollRef.current.scrollBy({
+      left: direction === 'left' ? -300 : 300,
+      behavior: 'smooth'
+    });
+  };
 
   const ScrollButtons = ({ scrollRef }) => (
     <div className="hidden md:flex gap-2">
