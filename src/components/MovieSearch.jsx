@@ -168,64 +168,62 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 🟢 2. ดึงข้อมูลหนัง โดยใช้ ID และมีระบบป้องกัน AI เดา ID ผิด
+        // 🟢 2. ใช้ "ชื่อเรื่อง" ไปค้นหา ID จริงๆ (แก้ปัญหา AI เดารหัสผิดแล้วการ์ดไม่ตรง)
+        let searchQueries = [];
+        
+        // ก. พยายามดึงชื่อหนังจาก JSON ก่อน
         if (aiSuggestedMovies.length > 0) {
+            searchQueries = aiSuggestedMovies.map(m => ({
+                title: m.title_en || m.title,
+                type: m.type === 'tv' ? 'tv' : 'movie',
+                reason: m.reason || ""
+            })).filter(m => m.title);
+        } 
+        
+        // ข. ถ้า JSON ไม่มีชื่อ ให้สกัดจากแท็ก <search> แทน (กันเหนียว)
+        if (searchQueries.length === 0) {
+            const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
+            let match;
+            while ((match = searchRegex.exec(rawMessage)) !== null) {
+                searchQueries.push({ title: match[1].trim(), type: 'multi', reason: '' });
+            }
+        }
+
+        // ค. เอาชื่อเรื่องไปค้นหาใน TMDB เพื่อดึงการ์ดที่ตรงกัน 100%
+        if (searchQueries.length > 0) {
             const API_KEY = "181edc5801db6678de6ccb2864149a6a";
             const fetchedDetails = await Promise.all(
-                aiSuggestedMovies.map(async (aiMovie) => {
+                searchQueries.slice(0, 3).map(async (queryObj) => {
                     try {
-                        let type = 'movie';
-                        let tmdbId = null;
+                        // 1. ค้นหาหา ID จริงจากชื่อเรื่อง
+                        const searchUrl = queryObj.type === 'multi' 
+                            ? `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(queryObj.title)}`
+                            : `https://api.themoviedb.org/3/search/${queryObj.type}?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(queryObj.title)}`;
+                        
+                        const searchRes = await fetch(searchUrl);
+                        const searchData = await searchRes.json();
+                        
+                        if (!searchData.results || searchData.results.length === 0) return null;
+                        
+                        // เอาผลลัพธ์แรกที่ใกล้เคียงที่สุด
+                        const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || searchData.results[0];
+                        if (!mediaResult) return null;
 
-                        // สกัด Prefix ออกจาก ID
-                        if (aiMovie.id) {
-                            const rawId = String(aiMovie.id);
-                            type = rawId.startsWith('tv-') ? 'tv' : (aiMovie.type || 'movie');
-                            tmdbId = rawId.replace(/^(mv-|tv-)/, '');
-                        } else if (aiMovie.type) {
-                            type = aiMovie.type === 'tv' ? 'tv' : 'movie';
-                        }
+                        const realType = mediaResult.media_type || (queryObj.type !== 'multi' ? queryObj.type : 'movie');
+                        const realId = mediaResult.id;
 
-                        let detailData = null;
-
-                        // ขั้นที่ 1: ลองดึงข้อมูลด้วย ID จาก AI ก่อน
-                        if (tmdbId && tmdbId !== "undefined" && tmdbId !== "null") {
-                            const detailUrl = type === 'tv' 
-                              ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                              : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                            
-                            const detailRes = await fetch(detailUrl);
-                            if (detailRes.ok) {
-                                detailData = await detailRes.json();
-                            }
-                        }
-
-                        // ขั้นที่ 2: ถ้าดึงด้วย ID ไม่เจอ (AI เดารหัสผิด) ให้ค้นหาเจาะจงหมวดหมู่ด้วยชื่อเรื่องแทน!
-                        if (!detailData && (aiMovie.title_en || aiMovie.title)) {
-                            const searchTitle = aiMovie.title_en || aiMovie.title;
-                            // ล็อกประเภทสื่อไว้ไม่ให้หนังกับซีรีส์ตีกัน
-                            const fallbackType = aiMovie.type || type; 
-                            const searchUrl = `https://api.themoviedb.org/3/search/${fallbackType}?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
-                            
-                            const searchRes = await fetch(searchUrl);
-                            const searchData = await searchRes.json();
-                            
-                            if (searchData.results && searchData.results.length > 0) {
-                                const correctId = searchData.results[0].id; // เอาอันดับแรกที่ตรงหมวดหมู่
-                                const detailUrl = fallbackType === 'tv' 
-                                  ? `https://api.themoviedb.org/3/tv/${correctId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                                  : `https://api.themoviedb.org/3/movie/${correctId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                                
-                                const fallbackRes = await fetch(detailUrl);
-                                if (fallbackRes.ok) detailData = await fallbackRes.json();
-                            }
-                        }
-
-                        if (!detailData) return null; // ข้ามเรื่องที่หาไม่เจอจริงๆ ไปเลย
-
-                        // หาเรทติ้งอายุตามปกติ
+                        // 2. เอา ID จริงไปดึงข้อมูลแบบละเอียด
+                        const detailUrl = realType === 'tv' 
+                            ? `https://api.themoviedb.org/3/tv/${realId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                            : `https://api.themoviedb.org/3/movie/${realId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                        
+                        const detailRes = await fetch(detailUrl);
+                        if (!detailRes.ok) return null;
+                        const detailData = await detailRes.json();
+                        
+                        // หาเรทติ้งอายุ
                         let ageRating = "NR";
-                        if (type === 'tv') {
+                        if (realType === 'tv') {
                             let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') || detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
                             if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
                                 ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1)) || detailData.content_ratings.results[0];
@@ -241,13 +239,14 @@ export default function MovieSearch({ currentUser }) {
                             ageRating = cert || "NR";
                         }
                         
+                        // 3. ประกอบร่างข้อมูลกลับไป พร้อมเติม Prefix ให้เหมือนเดิมเป๊ะ (mv- / tv-)
                         return { 
                             ...detailData, 
-                            id: `${type === 'tv' ? 'tv-' : 'mv-'}${detailData.id}`, // 🟢 บังคับเซ็ต ID ให้มี Prefix กลับไปใช้งานได้สมบูรณ์เสมอ
-                            media_type: type, 
+                            id: `${realType === 'tv' ? 'tv-' : 'mv-'}${detailData.id}`, 
+                            media_type: realType, 
                             genre_ids: detailData.genres?.map(g => g.id) || [], 
                             age_rating: ageRating,
-                            ai_reason: aiMovie.reason || "" 
+                            ai_reason: queryObj.reason 
                         };
                     } catch (err) { 
                         return null; 
@@ -256,46 +255,6 @@ export default function MovieSearch({ currentUser }) {
             );
             // กรอง null ออก แสดงเฉพาะเรื่องที่หาเจอ
             setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
-        } else {
-            // Fallback (เผื่อว่า AI ลืมส่ง JSON มาให้)
-            const extractedQueries = [];
-            const searchRegex = /<search>\s*(.*?)\s*<\/search>/gi;
-            let match;
-            while ((match = searchRegex.exec(rawMessage)) !== null) {
-                extractedQueries.push(match[1].trim());
-            }
-            const finalQueries = extractedQueries.slice(0, 3);
-
-            if (finalQueries.length > 0) {
-                const API_KEY = "181edc5801db6678de6ccb2864149a6a";
-                const fetchedDetails = await Promise.all(
-                    finalQueries.map(async (query) => { 
-                        try {
-                            const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(query)}`;
-                            const searchRes = await fetch(searchUrl);
-                            const searchData = await searchRes.json();
-                            
-                            if (searchData.results && searchData.results.length > 0) {
-                                const mediaResult = searchData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv');
-                                if (mediaResult) {
-                                    const type = mediaResult.media_type;
-                                    const tmdbId = mediaResult.id;
-                                    const detailUrl = type === 'tv' 
-                                      ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                                      : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                                    
-                                    const detailRes = await fetch(detailUrl);
-                                    const detailData = await detailRes.json();
-                                    
-                                    return { ...detailData, media_type: type, genre_ids: detailData.genres?.map(g => g.id) || [], age_rating: "NR" };
-                                }
-                            }
-                            return null;
-                        } catch (err) { return null; }
-                    })
-                );
-                setSearchMovies(fetchedDetails.filter(m => m !== null && m.poster_path));
-            }
         }
 
     } catch (error) {
