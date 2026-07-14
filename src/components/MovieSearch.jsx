@@ -256,7 +256,23 @@ export default function MovieSearch({ currentUser }) {
           const lineEndCandidate = rawMessage.indexOf('\n', searchRegex.lastIndex);
           const lineEnd = lineEndCandidate === -1 ? rawMessage.length : lineEndCandidate;
           const sameLine = rawMessage.slice(lineStart, lineEnd);
-          const yearMatch = sameLine.match(/(?:-|–|—)\s*((?:19|20)\d{2})/);
+
+          // <search> มักอยู่บรรทัดถัดจากชื่อเรื่อง จึงอ่านปีจากบรรทัดก่อนหน้าด้วย
+          const textBeforeTag = rawMessage.slice(
+            Math.max(0, searchMatch.index - 220),
+            searchMatch.index
+          );
+          const previousNonEmptyLine =
+            textBeforeTag
+              .split(/\r?\n/)
+              .map(line => line.trim())
+              .filter(Boolean)
+              .pop() || '';
+
+          const yearContext = `${previousNonEmptyLine}\n${sameLine}`;
+          const yearMatch = yearContext.match(
+            /(?:-|–|—)\s*((?:19|20)\d{2})/
+          );
           const detectedYear = yearMatch?.[1] || '';
 
           tagRecommendations.push({
@@ -278,30 +294,78 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        const sourceRecommendations = aiSuggestedMovies.length > 0
-          ? aiSuggestedMovies
-          : tagRecommendations;
+        // รวมข้อมูลตามลำดับเรื่อง โดยใช้ชื่อใน <search> เป็นหลัก
+        // ไม่เชื่อ TMDB ID จาก AI โดยตรง เพราะโมเดลอาจสร้าง ID หรือประเภทผิด
+        const recommendationCount = Math.max(
+          aiSuggestedMovies.length,
+          backendMovies.length,
+          tagRecommendations.length
+        );
 
-        const searchQueries = sourceRecommendations
-          .map(movie => {
-            const idText = String(movie.id || '');
-            const inferredType = movie.type === 'tv' || movie.media_type === 'tv' || idText.startsWith('tv-')
-              ? 'tv'
-              : movie.type === 'movie' || movie.media_type === 'movie' || idText.startsWith('mv-')
-                ? 'movie'
-                : 'multi';
-            const title = movie.title_en || movie.title || movie.name || movie.original_title || movie.original_name;
-            const yearFromText = tagYearByTitle.get(normalizeTitle(title)) || '';
+        const searchQueries = Array.from(
+          { length: recommendationCount },
+          (_, index) => {
+            const aiMovie = aiSuggestedMovies[index] || {};
+            const backendMovie = backendMovies[index] || {};
+            const tagMovie = tagRecommendations[index] || {};
+
+            const title = String(
+              tagMovie.title_en ||
+              aiMovie.title_en ||
+              aiMovie.title ||
+              backendMovie.title_en ||
+              backendMovie.title ||
+              ''
+            ).trim();
+
+            const idText = String(
+              aiMovie.id || backendMovie.id || ''
+            );
+
+            const suppliedType =
+              aiMovie.type ||
+              aiMovie.media_type ||
+              backendMovie.type ||
+              backendMovie.media_type ||
+              '';
+
+            const typeHint =
+              suppliedType === 'tv' || idText.startsWith('tv-')
+                ? 'tv'
+                : suppliedType === 'movie' || idText.startsWith('mv-')
+                  ? 'movie'
+                  : 'multi';
+
+            const yearFromText =
+              tagMovie.year ||
+              tagYearByTitle.get(normalizeTitle(title)) ||
+              '';
 
             return {
               title,
-              type: inferredType,
-              expectedId: getRawTmdbId(movie),
-              reason: movie.reason || '',
-              year: String(movie.year || movie.release_year || yearFromText || '').trim()
+              // type ใช้เป็นเพียงตัวช่วยจัดอันดับ ไม่ใช้บังคับ endpoint
+              typeHint,
+              reason:
+                aiMovie.reason ||
+                backendMovie.reason ||
+                '',
+              year: String(
+                yearFromText ||
+                aiMovie.year ||
+                aiMovie.release_year ||
+                backendMovie.year ||
+                backendMovie.release_year ||
+                ''
+              ).trim()
             };
-          })
+          }
+        )
           .filter(movie => movie.title)
+          .filter((movie, index, array) =>
+            array.findIndex(
+              other => normalizeTitle(other.title) === normalizeTitle(movie.title)
+            ) === index
+          )
           .slice(0, 3);
 
         if (searchQueries.length === 0) {
@@ -327,91 +391,161 @@ export default function MovieSearch({ currentUser }) {
 
         const resolveRecommendation = async (queryObj) => {
           try {
-            let realType = queryObj.type !== 'multi' ? queryObj.type : null;
-            let verifiedResult = null;
+            // ใช้ชื่อภาษาอังกฤษ + ปีค้นหา TMDB ทุกครั้ง
+            // ไม่เรียก Detail จาก ID ที่ AI ส่งมา จึงไม่เกิดกรณี /tv/<ID ผิด>
+            const searchData = await fetchJson(
+              `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=en-US&include_adult=false&query=${encodeURIComponent(queryObj.title)}`
+            );
 
-            // 1) ลองใช้ ID ที่ AI ส่งมา แต่รับเฉพาะเมื่อชื่อจาก TMDB ตรงกับ title_en จริง
-            if (queryObj.expectedId && realType) {
-              const idResult = await fetchDetail(realType, queryObj.expectedId, 'en-US');
-              if (idResult && getTitleMatchScore(idResult, queryObj.title) === 100) {
-                verifiedResult = idResult;
-              }
-            }
+            const candidates = (searchData?.results || [])
+              .filter(result => ['movie', 'tv'].includes(result.media_type))
+              .map((result, index) => {
+                const resultYear = String(
+                  result.release_date || result.first_air_date || ''
+                ).slice(0, 4);
 
-            // 2) เมื่อ ID ผิดหรือไม่มี ID ให้ค้นหาด้วยชื่อและจัดอันดับจากความตรงของชื่อ
-            if (!verifiedResult) {
-              const searchEndpoints = realType ? [realType, 'multi'] : ['multi'];
-              const candidateMap = new Map();
-
-              for (const searchEndpoint of searchEndpoints) {
-                const searchData = await fetchJson(
-                  `https://api.themoviedb.org/3/search/${searchEndpoint}?api_key=${API_KEY}&language=en-US&include_adult=false&query=${encodeURIComponent(queryObj.title)}`
+                const matchScore = getTitleMatchScore(
+                  result,
+                  queryObj.title
                 );
 
-                (searchData?.results || [])
-                  .map(result => ({
-                    ...result,
-                    media_type: result.media_type || (searchEndpoint !== 'multi' ? searchEndpoint : realType),
-                    matchScore: getTitleMatchScore(result, queryObj.title)
-                  }))
-                  .filter(result => ['movie', 'tv'].includes(result.media_type))
-                  .filter(result => result.matchScore >= 85)
-                  .forEach(result => {
-                    candidateMap.set(`${result.media_type}-${result.id}`, result);
-                  });
-              }
+                const yearBonus =
+                  queryObj.year && resultYear === queryObj.year
+                    ? 40
+                    : 0;
 
-              const candidates = [...candidateMap.values()].sort((a, b) => {
-                const yearA = (a.release_date || a.first_air_date || '').slice(0, 4);
-                const yearB = (b.release_date || b.first_air_date || '').slice(0, 4);
-                const yearBonusA = queryObj.year && yearA === queryObj.year ? 20 : 0;
-                const yearBonusB = queryObj.year && yearB === queryObj.year ? 20 : 0;
-                const typeBonusA = realType && a.media_type === realType ? 5 : 0;
-                const typeBonusB = realType && b.media_type === realType ? 5 : 0;
-                return (b.matchScore + yearBonusB + typeBonusB + (b.popularity || 0) / 1000)
-                  - (a.matchScore + yearBonusA + typeBonusA + (a.popularity || 0) / 1000);
-              });
+                const typeBonus =
+                  queryObj.typeHint !== 'multi' &&
+                  result.media_type === queryObj.typeHint
+                    ? 4
+                    : 0;
 
-              const bestResult = candidates[0];
-              if (!bestResult) {
-                console.warn(`TMDB exact match not found: ${queryObj.title}`);
-                return null;
-              }
+                const rankBonus = Math.max(0, 8 - index);
 
-              realType = bestResult.media_type;
-              verifiedResult = bestResult;
+                return {
+                  ...result,
+                  resultYear,
+                  matchScore,
+                  totalScore:
+                    matchScore +
+                    yearBonus +
+                    typeBonus +
+                    rankBonus +
+                    (result.popularity || 0) / 1000
+                };
+              })
+              // ป้องกันการเลือกเรื่องคนละชื่อเพียงเพราะได้รับความนิยมสูง
+              .filter(result => result.matchScore >= 85)
+              .sort((a, b) => b.totalScore - a.totalScore);
+
+            let bestResult = null;
+
+            // ถ้ามีปี ให้เลือกชื่อที่ตรงและปีตรงก่อนเสมอ
+            if (queryObj.year) {
+              bestResult =
+                candidates.find(
+                  result => result.resultYear === queryObj.year
+                ) || null;
             }
 
-            const realId = verifiedResult.id;
-            let detailData = await fetchDetail(realType, realId, 'th-TH');
+            // หากไม่มีผลปีตรง จึงค่อยใช้ผลชื่อที่ตรงที่สุด
+            if (!bestResult) {
+              bestResult = candidates[0] || null;
+            }
+
+            if (!bestResult) {
+              console.warn(
+                `TMDB match not found: ${queryObj.title} (${queryObj.year || 'no year'})`
+              );
+              return null;
+            }
+
+            const realType = bestResult.media_type;
+            const realId = bestResult.id;
+
+            let detailData = await fetchDetail(
+              realType,
+              realId,
+              'th-TH'
+            );
             if (!detailData) return null;
 
-            // ภาษาไทยบางเรื่องไม่มีชื่อ/เรื่องย่อ จึงเติมจาก en-US เฉพาะช่องที่ขาด
-            const englishDetail = await fetchDetail(realType, realId, 'en-US');
+            const englishDetail = await fetchDetail(
+              realType,
+              realId,
+              'en-US'
+            );
+
             if (englishDetail) {
-              if (!detailData.overview) detailData.overview = englishDetail.overview;
-              if (realType === 'tv' && !detailData.name) detailData.name = englishDetail.name;
-              if (realType === 'movie' && !detailData.title) detailData.title = englishDetail.title;
+              if (!detailData.overview) {
+                detailData.overview = englishDetail.overview;
+              }
+              if (realType === 'tv' && !detailData.name) {
+                detailData.name = englishDetail.name;
+              }
+              if (realType === 'movie' && !detailData.title) {
+                detailData.title = englishDetail.title;
+              }
             }
 
-            let ageRating = "NR";
+            let ageRating = 'NR';
+
             if (realType === 'tv') {
-              let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH')
-                || detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
-              if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
-                ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1))
-                  || detailData.content_ratings.results[0];
+              let ratingObj =
+                detailData.content_ratings?.results?.find(
+                  rating => rating.iso_3166_1 === 'TH'
+                ) ||
+                detailData.content_ratings?.results?.find(
+                  rating => rating.iso_3166_1 === 'US'
+                );
+
+              if (
+                !ratingObj &&
+                detailData.content_ratings?.results?.length > 0
+              ) {
+                ratingObj =
+                  detailData.content_ratings.results.find(
+                    rating =>
+                      detailData.origin_country?.includes(
+                        rating.iso_3166_1
+                      )
+                  ) ||
+                  detailData.content_ratings.results[0];
               }
-              ageRating = ratingObj?.rating || "NR";
+
+              ageRating = ratingObj?.rating || 'NR';
             } else {
-              let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH')
-                || detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
-              if (!releaseObj && detailData.release_dates?.results?.length > 0) {
-                const originCountries = detailData.production_countries?.map(c => c.iso_3166_1) || [];
-                releaseObj = detailData.release_dates.results.find(r => originCountries.includes(r.iso_3166_1))
-                  || detailData.release_dates.results[0];
+              let releaseObj =
+                detailData.release_dates?.results?.find(
+                  release => release.iso_3166_1 === 'TH'
+                ) ||
+                detailData.release_dates?.results?.find(
+                  release => release.iso_3166_1 === 'US'
+                );
+
+              if (
+                !releaseObj &&
+                detailData.release_dates?.results?.length > 0
+              ) {
+                const originCountries =
+                  detailData.production_countries?.map(
+                    country => country.iso_3166_1
+                  ) || [];
+
+                releaseObj =
+                  detailData.release_dates.results.find(
+                    release =>
+                      originCountries.includes(
+                        release.iso_3166_1
+                      )
+                  ) ||
+                  detailData.release_dates.results[0];
               }
-              ageRating = releaseObj?.release_dates?.find(rd => rd.certification)?.certification || "NR";
+
+              ageRating =
+                releaseObj?.release_dates?.find(
+                  release => release.certification
+                )?.certification || 'NR';
             }
 
             return {
@@ -419,13 +553,17 @@ export default function MovieSearch({ currentUser }) {
               id: `${realType === 'tv' ? 'tv-' : 'mv-'}${realId}`,
               tmdb_id: realId,
               media_type: realType,
-              genre_ids: detailData.genres?.map(g => g.id) || [],
+              genre_ids:
+                detailData.genres?.map(genre => genre.id) || [],
               age_rating: ageRating,
               ai_reason: queryObj.reason,
               requested_title: queryObj.title
             };
           } catch (error) {
-            console.error(`Resolve recommendation failed: ${queryObj.title}`, error);
+            console.error(
+              `Resolve recommendation failed: ${queryObj.title}`,
+              error
+            );
             return null;
           }
         };
