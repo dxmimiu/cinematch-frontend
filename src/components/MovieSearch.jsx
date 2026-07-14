@@ -42,6 +42,7 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
+    // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
@@ -53,23 +54,28 @@ export default function MovieSearch({ currentUser }) {
             }
 
             const isLike = type === 'like';
+            // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
             const rawId = item.id || item.film_id;
             const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
-
+            
+            // เตรียมข้อมูลให้ครบตามตาราง user_likes 
+            // 🟢 นี่คือจุดที่ทำให้ Backend ยอมรับข้อมูล
             const payload = {
-                movie_id: finalMovieId,
+                movie_id: finalMovieId, 
                 action: isLike ? 'like' : 'dislike',
                 media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
-                movie_title: item.title || item.name,
-                poster_path: item.poster_path,
-                genres: item.genre_ids ? item.genre_ids.join(',') : '',
+                movie_title: item.title || item.name || "ไม่ทราบชื่อ",
+                poster_path: item.poster_path || "",
+                genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่งเป็น String แบบ "28,12"
                 points: isLike ? 5 : 0 
             };
 
+            // 1. สั่งบันทึกลงตาราง user_likes "ก่อน" 
             await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
+            // 2. อัปเดตคะแนน Preferences (ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น)
             if (item.genre_ids && isLike) {
                 let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
                 if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -85,11 +91,22 @@ export default function MovieSearch({ currentUser }) {
 
                 await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` } }
+                    { headers: { Authorization: `Bearer ${token}` } } // 🟢 เพิ่มปีกกาปิด } ที่หายไปตรงนี้
                 );
             }
 
-            toast.success(isLike ? 'เพิ่มลงในรายการโปรดแล้ว' : 'ซ่อนหนังเรื่องนี้แล้ว');
+            // 3. อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
+            if (isLike) {
+                setLikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
+                setDislikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
+                toast.success('เพิ่มลงในรายการโปรดแล้ว');
+            } else {
+                setDislikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
+                setLikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
+                toast.success('ซ่อนหนังเรื่องนี้แล้ว');
+            }
+            
+            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
@@ -151,39 +168,71 @@ export default function MovieSearch({ currentUser }) {
         setAiMessage(cleanAiMessage.trim() || "นี่คือภาพยนตร์ที่เลือกมาแนะนำให้คุณค่ะ:");
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
-        // 2. ใช้ ID ที่ได้จาก AI ไปดึงข้อมูลตรงๆ
+        // 🟢 2. ดึงข้อมูลหนัง โดยใช้ ID และมีระบบป้องกัน AI เดา ID ผิด
         if (aiSuggestedMovies.length > 0) {
             const API_KEY = "181edc5801db6678de6ccb2864149a6a";
             const fetchedDetails = await Promise.all(
                 aiSuggestedMovies.map(async (aiMovie) => {
                     try {
-                        if (!aiMovie.id) return null;
-                        
-                        const rawId = String(aiMovie.id);
-                        const type = rawId.startsWith('tv-') ? 'tv' : 'movie';
-                        const tmdbId = rawId.replace(/^(mv-|tv-)/, '');
+                        let type = 'movie';
+                        let tmdbId = null;
 
-                        // 🟢 แก้ไข URL ตรงนี้ให้ถูกต้อง ไม่มีวงเล็บ
-                        const detailUrl = type === 'tv' 
-                          ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
-                          : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
-                        
-                        const detailRes = await fetch(detailUrl);
-                        if (!detailRes.ok) return null;
-                        const detailData = await detailRes.json();
-                        
-                        // หาเรทติ้งอายุ
+                        // สกัด Prefix ออกจาก ID
+                        if (aiMovie.id) {
+                            const rawId = String(aiMovie.id);
+                            type = rawId.startsWith('tv-') ? 'tv' : (aiMovie.type || 'movie');
+                            tmdbId = rawId.replace(/^(mv-|tv-)/, '');
+                        } else if (aiMovie.type) {
+                            type = aiMovie.type === 'tv' ? 'tv' : 'movie';
+                        }
+
+                        let detailData = null;
+
+                        // ขั้นที่ 1: ลองดึงข้อมูลด้วย ID จาก AI ก่อน
+                        if (tmdbId && tmdbId !== "undefined" && tmdbId !== "null") {
+                            const detailUrl = type === 'tv' 
+                              ? `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                              : `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                            
+                            const detailRes = await fetch(detailUrl);
+                            if (detailRes.ok) {
+                                detailData = await detailRes.json();
+                            }
+                        }
+
+                        // ขั้นที่ 2: ถ้าดึงด้วย ID ไม่เจอ (AI เดารหัสผิด) ให้ค้นหาเจาะจงหมวดหมู่ด้วยชื่อเรื่องแทน!
+                        if (!detailData && (aiMovie.title_en || aiMovie.title)) {
+                            const searchTitle = aiMovie.title_en || aiMovie.title;
+                            // ล็อกประเภทสื่อไว้ไม่ให้หนังกับซีรีส์ตีกัน
+                            const fallbackType = aiMovie.type || type; 
+                            const searchUrl = `https://api.themoviedb.org/3/search/${fallbackType}?api_key=${API_KEY}&language=th-TH&query=${encodeURIComponent(searchTitle)}`;
+                            
+                            const searchRes = await fetch(searchUrl);
+                            const searchData = await searchRes.json();
+                            
+                            if (searchData.results && searchData.results.length > 0) {
+                                const correctId = searchData.results[0].id; // เอาอันดับแรกที่ตรงหมวดหมู่
+                                const detailUrl = fallbackType === 'tv' 
+                                  ? `https://api.themoviedb.org/3/tv/${correctId}?api_key=${API_KEY}&language=th-TH&append_to_response=content_ratings`
+                                  : `https://api.themoviedb.org/3/movie/${correctId}?api_key=${API_KEY}&language=th-TH&append_to_response=release_dates`;
+                                
+                                const fallbackRes = await fetch(detailUrl);
+                                if (fallbackRes.ok) detailData = await fallbackRes.json();
+                            }
+                        }
+
+                        if (!detailData) return null; // ข้ามเรื่องที่หาไม่เจอจริงๆ ไปเลย
+
+                        // หาเรทติ้งอายุตามปกติ
                         let ageRating = "NR";
                         if (type === 'tv') {
-                            let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') ||
-                                            detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
+                            let ratingObj = detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'TH') || detailData.content_ratings?.results?.find(r => r.iso_3166_1 === 'US');
                             if (!ratingObj && detailData.content_ratings?.results?.length > 0) {
                                 ratingObj = detailData.content_ratings.results.find(r => detailData.origin_country?.includes(r.iso_3166_1)) || detailData.content_ratings.results[0];
                             }
                             ageRating = ratingObj?.rating || "NR";
                         } else {
-                            let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH') ||
-                                             detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
+                            let releaseObj = detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'TH') || detailData.release_dates?.results?.find(r => r.iso_3166_1 === 'US');
                             if (!releaseObj && detailData.release_dates?.results?.length > 0) {
                                 const originCountries = detailData.production_countries?.map(c => c.iso_3166_1) || [];
                                 releaseObj = detailData.release_dates.results.find(r => originCountries.includes(r.iso_3166_1)) || detailData.release_dates.results[0];
@@ -194,6 +243,7 @@ export default function MovieSearch({ currentUser }) {
                         
                         return { 
                             ...detailData, 
+                            id: `${type === 'tv' ? 'tv-' : 'mv-'}${detailData.id}`, // 🟢 บังคับเซ็ต ID ให้มี Prefix กลับไปใช้งานได้สมบูรณ์เสมอ
                             media_type: type, 
                             genre_ids: detailData.genres?.map(g => g.id) || [], 
                             age_rating: ageRating,
