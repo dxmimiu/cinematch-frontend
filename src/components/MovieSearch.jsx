@@ -225,7 +225,7 @@ export default function MovieSearch({ currentUser }) {
     setSearchQuery(''); 
     setIsSearching(true);
     setHasSearched(true);
-    setSearchMovies([]);
+    // อย่าล้างการ์ดเดิมตอนเริ่มส่งข้อความ เพราะ AI อาจถามกลับหรือ request อาจล้มเหลว
 
     const token = localStorage.getItem('cinematch_token');
 
@@ -305,7 +305,8 @@ export default function MovieSearch({ currentUser }) {
           .slice(0, 3);
 
         if (searchQueries.length === 0) {
-          setSearchMovies([]);
+          // รอบนี้ AI ยังไม่ได้แนะนำเรื่องใหม่ เช่น กำลังถามรายละเอียดเพิ่ม
+          // จึงคงการ์ดชุดเดิมไว้แทนการล้างหน้าจอ
           return;
         }
 
@@ -430,7 +431,16 @@ export default function MovieSearch({ currentUser }) {
         };
 
         const fetchedDetails = await Promise.all(searchQueries.map(resolveRecommendation));
-        setSearchMovies(fetchedDetails.filter(movie => movie && movie.poster_path));
+        const validMovies = fetchedDetails.filter(movie => movie && movie.poster_path);
+
+        // เปลี่ยนการ์ดเฉพาะเมื่อค้นพบข้อมูล TMDB ที่ใช้ได้จริง
+        // ถ้าหาไม่เจอทั้งหมด ให้คงการ์ดชุดเดิมไว้
+        if (validMovies.length > 0) {
+          setSearchMovies(validMovies);
+        } else {
+          console.warn('No valid TMDB cards found; keeping previous cards.');
+          toast.error('ยังดึงการ์ดเรื่องใหม่ไม่ได้ แต่การ์ดเดิมยังคงอยู่ค่ะ');
+        }
 
     } catch (error) {
         console.error("AI Routing Fail:", error);
