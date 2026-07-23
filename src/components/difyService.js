@@ -1,5 +1,3 @@
-// คำเตือน: วิธีนี้เรียก Dify จาก Frontend โดยตรง ทำให้ผู้ใช้มองเห็น API Key ได้
-// ใช้สำหรับ rollback ชั่วคราวเท่านั้น และควรสร้าง Dify API Key ใหม่ก่อนนำมาใส่
 const DIFY_API_KEY = "app-HfA3hKy2U9vrXFFt3kSHM31x";
 const DIFY_API_URL = "https://api.dify.ai/v1/chat-messages";
 
