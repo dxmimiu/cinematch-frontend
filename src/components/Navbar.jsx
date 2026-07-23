@@ -10,7 +10,7 @@ export default function Navbar({ currentStep, setStep, onLogout, username }) {
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0">
         
         <div className="flex items-center justify-between w-full md:w-auto">
-          {/* โลโก้แอปพลิเคชัน: เมื่อคลิกจะสั่งให้ setStep(5) เพื่อกลับไปหน้า Home ทันที */}
+          {/* โลโก้แอป: เมื่อคลิกจะสั่งให้ setStep(5) เพื่อกลับไปหน้า Home */}
           <div onClick={() => setStep(5)} className="text-2xl font-black text-[#8C0902] tracking-wider cursor-pointer">
             CINEMATCH
           </div>

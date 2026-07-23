@@ -76,7 +76,7 @@ export default function SearchPage() {
         }
     };
 
-    // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
+    // ฟังก์ชันจัดการการกด Like / Dislike 
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
@@ -88,28 +88,27 @@ export default function SearchPage() {
             }
 
             const isLike = type === 'like';
-            // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
+            // เอา ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
             const rawId = item.id || item.film_id;
             const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
             
-            // เตรียมข้อมูลให้ครบตามตาราง user_likes 
-            // 🟢 นี่คือจุดที่ทำให้ Backend ยอมรับข้อมูล
+            // Backend ยอมรับข้อมูล
             const payload = {
                 movie_id: finalMovieId, 
                 action: isLike ? 'like' : 'dislike',
                 media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
                 movie_title: item.title || item.name || "ไม่ทราบชื่อ",
                 poster_path: item.poster_path || "",
-                genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่งเป็น String แบบ "28,12"
+                genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่ง genre เป็น String แบบ "28,12"
                 points: isLike ? 5 : 0 
             };
 
-            // 1. สั่งบันทึกลงตาราง user_likes "ก่อน" 
+            // สั่งบันทึกลงตาราง user_likes ก่อน
             await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // 2. อัปเดตคะแนน Preferences (ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น)
+            // อัปเดตคะแนน Preferences ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น
             if (item.genre_ids && isLike) {
                 let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
                 if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -125,11 +124,11 @@ export default function SearchPage() {
 
                 await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` } } // 🟢 เพิ่มปีกกาปิด } ที่หายไปตรงนี้
+                    { headers: { Authorization: `Bearer ${token}` } }
                 );
             }
 
-            // 3. อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
+            // อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
             if (isLike) {
                 setLikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
                 setDislikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
@@ -140,7 +139,6 @@ export default function SearchPage() {
                 toast.success('ซ่อนหนังเรื่องนี้แล้ว');
             }
             
-            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
@@ -231,7 +229,7 @@ export default function SearchPage() {
         }
     };
 
-    // Component การ์ดแบบเดียวกับหน้า Home เป๊ะๆ
+    // การ์ดหนัง
     const MovieCard = ({ item, isTV }) => {
         const title = isTV ? item.name : item.title;
         const year = isTV ? item.first_air_date?.substring(0, 4) : item.release_date?.substring(0, 4);
@@ -319,7 +317,7 @@ export default function SearchPage() {
                 )}
             </div>
 
-            {/* Modal แบบเดียวกับหน้า Home 100% */}
+            {/* Modal แบบเดียวกับหน้า Home */}
             {selectedMovie && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-[#210100]/80 backdrop-blur-sm animate-fade-in">
                     <div className="bg-[#FFFDF9] rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative flex flex-col md:flex-row transform transition-all scale-100">

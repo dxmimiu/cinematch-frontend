@@ -8,8 +8,7 @@ export default function Auth({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // 1. เพิ่ม State จัดการตาเปิด/ปิด
-
+  const [showPassword, setShowPassword] = useState(false); 
   const BASE_URL = 'https://cinematch-backend-hdvz.onrender.com';
 
   const handleSubmit = async (e) => {
@@ -39,7 +38,7 @@ export default function Auth({ onLoginSuccess }) {
   return (
     <div className="min-h-screen bg-[#FFFDF9] flex flex-col items-center justify-center p-6 animate-fade-in">
       <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-[0_10px_40px_rgba(33,1,0,0.08)] border-2 border-[#FECE79]/30">
-        {/* ... (ส่วน Header และปุ่มสลับ Login/Register เหมือนเดิม) ... */}
+        {/* ส่วน Header และปุ่มสลับ Login/Register */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black text-[#8C0902] mb-2 uppercase tracking-wider">CINEMATCH</h1>
           <p className="text-[#210100]/60 text-sm font-bold">{isLogin ? 'เข้าสู่ระบบเพื่อค้นหาความชอบของคุณ' : 'สร้างบัญชีเพื่อเริ่มต้นใช้งาน'}</p>
@@ -65,14 +64,14 @@ export default function Auth({ onLoginSuccess }) {
             <label className="block text-xs font-black text-[#B14A36] mb-1.5 ml-2">รหัสผ่าน</label>
             <div className="relative">
               <input 
-                type={showPassword ? "text" : "password"} // 2. สลับ type ตาม state
+                type={showPassword ? "text" : "password"} // สลับ type ตาม state
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 className="w-full bg-[#FFFDF9] border-2 border-[#FECE79]/50 focus:border-[#8C0902] rounded-xl px-4 py-3.5 pr-12 outline-none font-medium text-[#210100] transition-colors" 
                 placeholder="••••••••" 
                 required 
               />
-              {/* 3. ปุ่ม Icon ตาเปิด/ปิด (SVG แบบฝังตัว ไม่ต้องติดตั้งเพิ่ม) */}
+              {/* ปุ่ม Icon ตาเปิด/ปิด */}
               <button 
                 type="button" 
                 onClick={() => setShowPassword(!showPassword)}

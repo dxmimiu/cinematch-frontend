@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-// เพิ่ม "ดิกชันนารีแปลจิตวิทยาเป็นแนวหนัง" (คำตอบ -> [แนวหนัง, คะแนน])
+// คำตอบ -> [แนวหนัง, คะแนน]
 const ANSWER_TO_GENRE_MAP = {
   // Level 1
   "หาที่เที่ยวไกลๆ หรือลองไปคาเฟ่ ร้านใหม่ๆ": { "ผจญภัย": 3, "โรแมนติก": 1 },
@@ -122,11 +122,11 @@ export default function PreferenceQuiz({ onComplete }) {
     if (currentStep === 5) return questionsData.level5;
   };
 
-  // ✅ เปลี่ยนเป็นฟังก์ชัน Async เพื่อยิง API ไปบันทึกลง Database
+  // ฟังก์ชัน Async เพื่อยิง API ไปบันทึกลง Database
   const processAndSavePreferences = async (answers) => {
     let prefs = { genreWeights: {} };
 
-    // 1. วนลูปคำตอบทั้ง 5 ข้อเพื่อบวกคะแนน
+    // วนลูปคำตอบทั้ง 5 ข้อเพื่อบวกคะแนน
     Object.values(answers).forEach(answerText => {
       const genresToBoost = ANSWER_TO_GENRE_MAP[answerText];
       if (genresToBoost) {
@@ -136,10 +136,10 @@ export default function PreferenceQuiz({ onComplete }) {
       }
     });
 
-    // 2. บันทึกลง Local Storage เพื่อการใช้งานเบื้องต้นฝั่งหน้าบ้าน
+    // บันทึกลง Local Storage เพื่อการใช้งานเบื้องต้นฝั่งหน้าบ้าน
     localStorage.setItem('cinematch_preferences', JSON.stringify(prefs));
 
-    // 3. ยิงข้อมูลที่คำนวณได้ไปบันทึกลง Database (Supabase)
+    // ยิงข้อมูลที่คำนวณได้ไปบันทึกลง Database (Supabase)
     try {
       const token = localStorage.getItem('cinematch_token');
       if (token) {
@@ -165,7 +165,7 @@ export default function PreferenceQuiz({ onComplete }) {
       if (currentStep < 5) {
         setCurrentStep(prev => prev + 1);
       } else {
-        // ✅ ข้อสุดท้าย: เซฟข้อมูลลง Database ก่อน แล้วค่อยให้ onComplete ทำงาน (เพื่อเปลี่ยนหน้า)
+        // เซฟข้อมูลลง Database ก่อน แล้วค่อยให้ onComplete ทำงาน (เพื่อเปลี่ยนหน้า)
         setIsSubmitting(true);
         toast.loading("กำลังประมวลผลรสนิยมของคุณ...", { id: 'quiz-loading' });
         

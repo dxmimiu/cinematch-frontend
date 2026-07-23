@@ -109,7 +109,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
     fetchData();
   }, []);
 
-    // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
+    // ฟังก์ชันจัดการการกด Like / Dislike
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
@@ -121,28 +121,27 @@ export default function Home({ setStep, currentUser, userPreferences }) {
             }
 
             const isLike = type === 'like';
-            // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
+            // เอา ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
             const rawId = item.id || item.film_id;
             const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
             
-            // เตรียมข้อมูลให้ครบตามตาราง user_likes 
-            // 🟢 นี่คือจุดที่ทำให้ Backend ยอมรับข้อมูล
+            // Backend ยอมรับข้อมูล
             const payload = {
                 movie_id: finalMovieId, 
                 action: isLike ? 'like' : 'dislike',
                 media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
                 movie_title: item.title || item.name || "ไม่ทราบชื่อ",
                 poster_path: item.poster_path || "",
-                genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่งเป็น String แบบ "28,12"
+                genres: item.genre_ids ? item.genre_ids.join(',') : "", // ส่ง genre เป็น String แบบ "28,12"
                 points: isLike ? 5 : 0 
             };
 
-            // 1. สั่งบันทึกลงตาราง user_likes "ก่อน" 
+            // บันทึกลงตาราง user_likes ก่อน
             await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // 2. อัปเดตคะแนน Preferences (ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น)
+            // อัปเดตคะแนน Preferences ทำเมื่อบันทึกลงตาราง Likes สำเร็จเท่านั้น
             if (item.genre_ids && isLike) {
                 let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
                 if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -158,11 +157,10 @@ export default function Home({ setStep, currentUser, userPreferences }) {
 
                 await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` } } // 🟢 เพิ่มปีกกาปิด } ที่หายไปตรงนี้
+                    { headers: { Authorization: `Bearer ${token}` } }
                 );
             }
 
-            // 3. อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
             if (isLike) {
                 setLikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
                 setDislikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
@@ -173,7 +171,6 @@ export default function Home({ setStep, currentUser, userPreferences }) {
                 toast.success('ซ่อนหนังเรื่องนี้แล้ว');
             }
             
-            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
@@ -340,7 +337,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-10">
             
-            {/* --- อันดับ 1 --- */}
+            {/* อันดับ 1 */}
             {top1 && (
               <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1]" onClick={() => handleMovieClick(top1)}>
                 <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
@@ -389,7 +386,7 @@ export default function Home({ setStep, currentUser, userPreferences }) {
             </div>
           </div>
 
-          {/* --- อันดับ 4-10 --- */}
+          {/* อันดับ 4-10 */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-lg font-black text-[#210100]">อันดับ 4 - 10</h4>

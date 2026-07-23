@@ -13,10 +13,10 @@ import MovieSearch from './components/MovieSearch';
 import Home from './components/Home';
 import Auth from './components/Auth'; 
 import Collection from './components/Collection';
-import SearchPage from './components/SearchPage'; // ✅ เพิ่ม Import หน้า SearchPage
+import SearchPage from './components/SearchPage';
 
 export default function App() {
-  // 🟢 ตั้งค่าเริ่มต้นเป็น -1 เพื่อให้แสดงหน้าล็อกอินทันที ไม่มีการยิงตรวจเช็ค Token ค้างเก่า
+  // ตั้งค่าเริ่มต้นเป็น -1 เพื่อให้แสดงหน้าล็อกอินทันที ไม่มีการยิงตรวจเช็ค Token ค้างเก่า
   const [step, setStep] = useState(-1); 
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -33,7 +33,7 @@ export default function App() {
     }
   };
 
-  // ✅ รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
+  // รับค่า authType ที่ส่งมาจากหน้า Auth.jsx เพื่อจัดเส้นทางให้แม่นยำขึ้น
   const handleLoginSuccess = (user, authType) => {
     setCurrentUser(user);
     

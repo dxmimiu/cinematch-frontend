@@ -132,7 +132,7 @@ export default function MovieSearch({ currentUser }) {
     fetchLikes();
   }, []);
 
-    // ฟังก์ชันจัดการการกด Like / Dislike (แบบการ์ดไม่หายไปจากจอ)
+    // ฟังก์ชันจัดการการกด Like / Dislike
     const handleVote = async (item, type, e) => {
         if (e) e.stopPropagation();
 
@@ -144,12 +144,11 @@ export default function MovieSearch({ currentUser }) {
             }
 
             const isLike = type === 'like';
-            // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
+            // เอา ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
             const finalMovieId = getRawTmdbId(item);
             const itemMediaType = getMediaType(item);
             
-            // เตรียมข้อมูลให้ครบตามตาราง user_likes 
-            // 🟢 นี่คือจุดที่ทำให้ Backend ยอมรับข้อมูล
+            // Backend ยอมรับข้อมูล
             const payload = {
                 movie_id: finalMovieId, 
                 action: isLike ? 'like' : 'dislike',
@@ -181,11 +180,10 @@ export default function MovieSearch({ currentUser }) {
 
                 await axios.post('https://cinematch-backend-hdvz.onrender.com/api/preferences', 
                     { genreWeights: prefs.genreWeights },
-                    { headers: { Authorization: `Bearer ${token}` } } // 🟢 เพิ่มปีกกาปิด } ที่หายไปตรงนี้
+                    { headers: { Authorization: `Bearer ${token}` } }
                 );
             }
 
-            // 3. อัปเดต State ให้ปุ่มเปลี่ยนสีทันทีโดยไม่ต้องรีเฟรชหน้า
             const isSameMedia = (savedItem) => (
                 getRawTmdbId(savedItem) === finalMovieId &&
                 getMediaType(savedItem) === itemMediaType
@@ -201,7 +199,6 @@ export default function MovieSearch({ currentUser }) {
                 toast.success('ซ่อนหนังเรื่องนี้แล้ว');
             }
             
-            // 🟢 ไม่มีการใช้ setMovies หรือ filter ใดๆ เพื่อลบการ์ดออก การ์ดจะอยู่ตำแหน่งเดิม
 
         } catch (error) {
             console.error("Vote error:", error);
@@ -295,7 +292,6 @@ export default function MovieSearch({ currentUser }) {
         if (res.data.conversation_id) setConversationId(res.data.conversation_id);
 
         // รวมข้อมูลตามลำดับเรื่อง โดยใช้ชื่อใน <search> เป็นหลัก
-        // ไม่เชื่อ TMDB ID จาก AI โดยตรง เพราะโมเดลอาจสร้าง ID หรือประเภทผิด
         const recommendationCount = Math.max(
           aiSuggestedMovies.length,
           backendMovies.length,
@@ -343,7 +339,7 @@ export default function MovieSearch({ currentUser }) {
 
             return {
               title,
-              // type ใช้เป็นเพียงตัวช่วยจัดอันดับ ไม่ใช้บังคับ endpoint
+              // type ใช้เป็นตัวช่วยจัดอันดับ
               typeHint,
               reason:
                 aiMovie.reason ||
@@ -369,8 +365,7 @@ export default function MovieSearch({ currentUser }) {
           .slice(0, 3);
 
         if (searchQueries.length === 0) {
-          // รอบนี้ AI ยังไม่ได้แนะนำเรื่องใหม่ เช่น กำลังถามรายละเอียดเพิ่ม
-          // จึงคงการ์ดชุดเดิมไว้แทนการล้างหน้าจอ
+          // รอบนี้ AI ยังไม่ได้แนะนำเรื่องใหม่ เช่น กำลังถามรายละเอียดเพิ่ม คงการ์ดชุดเดิมไว้แทนการล้างหน้าจอ
           return;
         }
 
@@ -392,7 +387,6 @@ export default function MovieSearch({ currentUser }) {
         const resolveRecommendation = async (queryObj) => {
           try {
             // ใช้ชื่อภาษาอังกฤษ + ปีค้นหา TMDB ทุกครั้ง
-            // ไม่เรียก Detail จาก ID ที่ AI ส่งมา จึงไม่เกิดกรณี /tv/<ID ผิด>
             const searchData = await fetchJson(
               `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&language=en-US&include_adult=false&query=${encodeURIComponent(queryObj.title)}`
             );
@@ -571,8 +565,7 @@ export default function MovieSearch({ currentUser }) {
         const fetchedDetails = await Promise.all(searchQueries.map(resolveRecommendation));
         const validMovies = fetchedDetails.filter(movie => movie && movie.poster_path);
 
-        // เปลี่ยนการ์ดเฉพาะเมื่อค้นพบข้อมูล TMDB ที่ใช้ได้จริง
-        // ถ้าหาไม่เจอทั้งหมด ให้คงการ์ดชุดเดิมไว้
+        // เปลี่ยนการ์ดเฉพาะเมื่อค้นพบข้อมูล TMDB ที่ใช้ได้จริง ถ้าหาไม่เจอทั้งหมด ให้คงการ์ดชุดเดิมไว้
         if (validMovies.length > 0) {
           setSearchMovies(validMovies);
         } else {
@@ -703,7 +696,7 @@ export default function MovieSearch({ currentUser }) {
                   <h3 className="text-md font-black text-[#210100] uppercase tracking-wide">ภาพยนตร์ที่ AI แนะนำ</h3>
                 </div>
                 
-                {/* จัด Layout ให้สวยงามตามหลัก Mobile First */}
+                {/* จัด Layout Mobile */}
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full justify-center">
                   {searchMovies.map((item) => {
                     const title = item.media_type === 'tv' ? item.name : item.title;

@@ -3,12 +3,12 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 export default function RoomSetup({ onNext }) {
-  const [mode, setMode] = useState('create'); // 'create' = สร้างห้อง, 'join' = เข้าร่วมห้อง
+  const [mode, setMode] = useState('create');
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // พยายามดึงชื่อจากข้อมูลผู้ใช้ที่ล็อกอินอยู่มาเป็นค่าเริ่มต้น
+  // ดึงชื่อจากข้อมูลผู้ใช้ที่ล็อกอินอยู่มาเป็นค่าเริ่มต้น
   useEffect(() => {
     try {
       const token = localStorage.getItem('cinematch_token');

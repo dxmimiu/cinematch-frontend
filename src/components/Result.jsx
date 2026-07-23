@@ -62,7 +62,7 @@ export default function Result({ onLeave }) {
     loadMatchedMovies();
   }, []);
 
-  // 🟢 ฟังก์ชันจัดการการกด Like / Dislike อัปเดตให้รองรับฐานข้อมูล
+  // ฟังก์ชันจัดการการกด Like / Dislike อัปเดตให้รองรับฐานข้อมูล
   const handleVote = async (item, type, e) => {
     if (e) e.stopPropagation();
     
@@ -75,13 +75,13 @@ export default function Result({ onLeave }) {
     try {
         const isLike = type === 'like';
         const rawId = item.id || item.film_id;
-        // สกัด ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
+        // เอา ID ออกมาแบบเพียวๆ (ลบ mv- หรือ tv- ทิ้ง) เพื่อเตรียมส่งให้ Database
         const finalMovieId = String(rawId).replace(/^(mv-|tv-)/, '');
 
         const isCurrentlyLiked = likedMovies.some(m => String(m.movie_id) === finalMovieId);
         const isCurrentlyDisliked = dislikedMovies.some(m => String(m.movie_id) === finalMovieId);
 
-        // 1. ตรวจสอบกรณี กดยกเลิก Like หรือ ยกเลิก Dislike (กดย้ำปุ่มเดิม)
+        // ตรวจสอบกรณี กดยกเลิก Like หรือ ยกเลิก Dislike (กดย้ำปุ่มเดิม)
         if ((isLike && isCurrentlyLiked) || (!isLike && isCurrentlyDisliked)) {
             // สั่งลบออกจากตาราง user_likes
             await axios.delete(`https://cinematch-backend-hdvz.onrender.com/api/likes/${finalMovieId}`, { 
@@ -114,10 +114,10 @@ export default function Result({ onLeave }) {
                 setDislikedMovies(dislikedMovies.filter(m => String(m.movie_id) !== finalMovieId));
                 toast.success("นำออกจากรายการที่ไม่ชอบแล้ว");
             }
-            return; // จบการทำงาน
+            return;
         }
 
-        // 2. เตรียม payload ให้ครบ เพื่อส่งไป Backend
+        // เตรียม payload ให้ครบ เพื่อส่งไป Backend
         const payload = {
             movie_id: finalMovieId,
             action: isLike ? 'like' : 'dislike',
@@ -128,12 +128,12 @@ export default function Result({ onLeave }) {
             points: isLike ? 5 : 0 
         };
 
-        // 3. สั่งบันทึกลงตาราง user_likes
+        // บันทึกลงตาราง user_likes
         await axios.post('https://cinematch-backend-hdvz.onrender.com/api/likes', payload, { 
             headers: { Authorization: `Bearer ${token}` } 
         });
 
-        // 4. จัดการคะแนน (เฉพาะตอน Like หรือเปลี่ยนจาก Dislike เป็น Like)
+        // จัดการคะแนน เฉพาะตอน Like หรือเปลี่ยนจาก Dislike เป็น Like
         if (item.genre_ids && isLike && !isCurrentlyLiked) {
             let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
             if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -169,7 +169,7 @@ export default function Result({ onLeave }) {
             );
         }
 
-        // 5. อัปเดต UI ทันที
+        // อัปเดต UI ทันที
         if (isLike) {
             setLikedMovies(prev => [...prev.filter(m => String(m.movie_id) !== finalMovieId), { ...payload, movie_id: finalMovieId }]);
             setDislikedMovies(prev => prev.filter(m => String(m.movie_id) !== finalMovieId));
@@ -325,12 +325,12 @@ export default function Result({ onLeave }) {
       <div className="max-w-7xl w-full">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-12">
           
-          {/* --- Top 1 Card --- */}
+          {/* Top 1 Card */}
           {top1 && (
             <div className="lg:col-span-2 relative group rounded-3xl overflow-hidden shadow-xl border-4 border-[#E6A341] bg-black cursor-pointer aspect-4/5 sm:aspect-video md:aspect-[2.21/1] p-1" onClick={() => handleMovieClick(top1)}>
               <img src={`https://image.tmdb.org/t/p/original${top1.backdrop_path}`} alt={top1.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 group-hover:opacity-80 transition-all duration-700" />
               
-              {/* 🟢 ปุ่ม Like / Dislike (Top 1) */}
+              {/* ปุ่ม Like / Dislike (Top 1) */}
               <div className="absolute top-4 right-4 z-20 flex gap-2">
                 <button 
                   onClick={(e) => handleVote(top1, 'dislike', e)} 
@@ -370,13 +370,13 @@ export default function Result({ onLeave }) {
             </div>
           )}
 
-          {/* --- Top 2-3 Cards --- */}
+          {/* Top 2-3 Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
             {[top2, top3].map((movie, idx) => movie && (
               <div key={movie.id} onClick={() => handleMovieClick(movie)} className={`w-full h-full min-h-50 sm:min-h-auto relative group rounded-3xl overflow-hidden shadow-lg border-2 cursor-pointer flex flex-col justify-end p-5 ${idx === 0 ? 'border-[#C0C0C0]' : 'border-[#CD7F32]'}`}>
                 <img src={`https://image.tmdb.org/t/p/w780${movie.backdrop_path}`} alt={movie.title} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-all duration-700 bg-black" />
                 
-                {/* 🟢 ปุ่ม Like / Dislike (Top 2-3) */}
+                {/* ปุ่ม Like / Dislike (Top 2-3) */}
                 <div className="absolute top-3 right-3 z-20 flex gap-1.5">
                   <button 
                     onClick={(e) => handleVote(movie, 'dislike', e)} 
@@ -411,7 +411,7 @@ export default function Result({ onLeave }) {
           </div>
         </div>
 
-        {/* --- Top 4-10 Cards --- */}
+        {/* Top 4-10 Cards */}
         {otherRanks.length > 0 && (
           <div className="mb-12">
             <div className="flex items-center justify-between mb-4">
@@ -432,7 +432,7 @@ export default function Result({ onLeave }) {
                       <span className="bg-[#210100]/80 text-[#FECE79] px-1.5 py-0.5 rounded text-[8px] font-black border border-[#FECE79]/30 backdrop-blur-sm">🎯 {movie.matchPercent}% Match</span>
                     </div>
 
-                    {/* 🟢 ปุ่ม Like / Dislike (Top 4-10) */}
+                    {/* ปุ่ม Like / Dislike (Top 4-10) */}
                     <div className="absolute bottom-2 right-2 z-20 flex gap-1">
                       <button 
                         onClick={(e) => handleVote(movie, 'dislike', e)} 

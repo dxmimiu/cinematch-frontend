@@ -9,13 +9,13 @@ const GENRE_MAP = {
   10770: "ทีวีมูฟวี่", 53: "ระทึกขวัญ", 10752: "สงคราม", 37: "คาวบอย"
 };
 
-// 🟢 ฟังก์ชันคำนวณคะแนนตามความเร็ว
+// ฟังก์ชันคำนวณคะแนนตามความเร็ว
 const calculatePoints = (timeTaken) => {
-  if (timeTaken <= 3) return 5;       // ตัดสินใจใน 3 วิแรก = โคตรชอบ (5 แต้ม)
-  if (timeTaken <= 7) return 4;       // ตัดสินใจใน 7 วิ = ชอบมาก (4 แต้ม)
-  if (timeTaken <= 12) return 3;      // ตัดสินใจใน 12 วิ = ชอบปานกลาง (3 แต้ม)
-  if (timeTaken < 15) return 2;       // ลังเลมาก (2 แต้ม)
-  return 1;                           // หมดเวลา/ตัดสินใจเกิน 15 วิ (ได้ 1 แต้ม)
+  if (timeTaken <= 3) return 5;       
+  if (timeTaken <= 7) return 4;       
+  if (timeTaken <= 12) return 3;      
+  if (timeTaken < 15) return 2;       
+  return 1;                           
 };
 
 export default function ThisOrThat({ onComplete }) {
@@ -69,7 +69,7 @@ export default function ThisOrThat({ onComplete }) {
     return () => clearInterval(timer);
   }, [currentIndex, isLoading]);
 
-  // 🟢 แก้ไขลอจิกเมื่อเวลาหมด: แจ้งเตือนเพื่อให้เลือก แต่ไม่ข้ามอัตโนมัติแล้ว
+  // แจ้งเตือนเพื่อให้เลือก แต่ไม่ข้ามอัตโนมัติแล้ว
   useEffect(() => {
     if (timeLeft === 0 && !isLoading && moviePairs.length > 0) {
       toast.error('หมดเวลาแล้ว! กรุณาเลือกหนังเรื่องที่ชอบเพื่อไปต่อ', {
@@ -106,15 +106,15 @@ export default function ThisOrThat({ onComplete }) {
     setTimeLeft(15); 
     const token = localStorage.getItem('cinematch_token');
 
-    // 🟢 1. ระบุผู้ชนะและผู้แพ้จากการกด
+    // ระบุผู้ชนะและผู้แพ้จากการเลือกของผู้ใช้
     const winner = selectedMovie;
     const loser = selectedMovie.id === currentPair.left.id ? currentPair.right : currentPair.left;
 
-    // 🟢 2. ดึงหมวดหมู่หลัก (Primary Genre) ของผู้ชนะและผู้แพ้
+    // ดึงหมวดหมู่หลักของหนัง ของผู้ชนะและผู้แพ้
     const winnerGenre = winner.genre_ids && winner.genre_ids.length > 0 ? GENRE_MAP[winner.genre_ids[0]] : null;
     const loserGenre = loser.genre_ids && loser.genre_ids.length > 0 ? GENRE_MAP[loser.genre_ids[0]] : null;
 
-    // 🟢 3. ยิง API ส่งผลโหวตไปเข้าสมการ Bradley-Terry Model ที่ Backend
+    // ยิง API ส่งผลโหวตไปเข้าสมการ Bradley-Terry Model ที่ Backend
     if (winnerGenre && loserGenre) {
       axios.post('https://cinematch-backend-hdvz.onrender.com/api/this-that/vote', {
         winner_movie_id: winner.id,
@@ -125,7 +125,7 @@ export default function ThisOrThat({ onComplete }) {
       .catch(err => console.error("Bradley-Terry Vote Error:", err));
     }
 
-    // --- (โค้ดเก่าด้านล่างนี้เก็บไว้เหมือนเดิม เพื่อให้ซิงค์ลง LocalStorage และ History) ---
+    // อัปเดตคะแนนความชอบของผู้ใช้ใน Local Storage และ Backend
     if (selectedMovie.genre_ids) {
       let prefs = JSON.parse(localStorage.getItem('cinematch_preferences') || '{"genreWeights":{}}');
       if (!prefs.genreWeights) prefs.genreWeights = {};
@@ -186,7 +186,7 @@ export default function ThisOrThat({ onComplete }) {
           รอบสุ่มความชอบ
         </span>
         <h1 className="text-lg md:text-3xl font-black text-[#210100] mt-2 md:mt-3">ชอบเรื่องไหนมากกว่ากัน?</h1>
-        {/* 🟢 แสดงข้อความเตือนสีแดงกระพริบเมื่อหมดเวลา */}
+        {/* แสดงข้อความเตือนสีแดงกระพริบเมื่อหมดเวลา */}
         <p className={`font-black text-sm md:text-xl mt-1 ${timeLeft === 0 ? 'text-red-600 animate-pulse' : 'text-[#8C0902]'}`}>
           {timeLeft > 0 ? `${timeLeft} วินาที` : 'หมดเวลา! (กรุณาเลือกหนัง)'}
         </p>
